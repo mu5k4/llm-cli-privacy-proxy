@@ -44,7 +44,7 @@ Today that means:
 - `scripts/regression.ps1`: run expanded regression coverage, optionally including disruptive fail-closed checks
 - `scripts/install.ps1`: Codex CLI integration helper
 - `scripts/codex-status.ps1`: verify Codex login, provider config, and local proxy health
-- `scripts/codex-with-privacy.ps1`: launch Codex against the local privacy provider for a chosen workspace
+- `scripts/codex-with-privacy.ps1`: optional advanced wrapper for one-shot provider override cases
 - `scripts/package.ps1`: build a clean shareable zip without local runtime state
 
 The expanded regression suite covers protect/restore round trips, session reuse, `/responses` guard rails, streaming placeholder restoration at chunk boundaries, and optional fail-closed analyzer outage handling.
@@ -84,6 +84,26 @@ If you want to hand the project to a colleague as a clean archive:
 That creates a timestamped zip under `./dist/` and excludes local runtime cache plus machine-specific `.env`.
 
 Release metadata lives in `./VERSION`, `./CHANGELOG.md`, and `./CONTRIBUTING.md`.
+
+## Teammate Quickstart
+
+For a first-time Codex user on Windows:
+
+1. Clone or unpack the repo.
+2. Run `./scripts/install.ps1`.
+3. Run `./scripts/codex-status.ps1`.
+4. When the stack is healthy, open any repo and run `codex` normally.
+
+```powershell
+cd C:\path\to\your\repo
+codex
+```
+
+Day-to-day usage after setup:
+
+1. start the privacy stack with `./scripts/start.ps1`
+2. open the repo you want
+3. run `codex`
 
 ## Start The Proxy
 
