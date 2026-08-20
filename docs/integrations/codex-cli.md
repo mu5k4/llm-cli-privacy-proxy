@@ -11,6 +11,11 @@ For a teammate who just needs the working Codex flow:
 3. Start the privacy stack when needed with `./scripts/start.ps1`
 4. Open any repo and run `codex` normally
 
+```powershell
+cd C:\path\to\your\repo
+codex
+```
+
 ## Requirements
 
 - Docker Desktop
@@ -124,8 +129,8 @@ This is stronger evidence than raw container logs alone, because the current pro
 - `codex-status.ps1`: readiness check for login, provider, and local proxy health
 - `start.ps1`: bring the local privacy stack up before coding sessions
 - `stop.ps1`: stop the local privacy stack when done
-- `codex-with-privacy.ps1`: optional wrapper if you want an explicit one-shot provider override
-- `codex-with-privacy.ps1 -Exec`: optional wrapper for non-interactive one-shot usage
+- `codex-with-privacy.ps1`: advanced wrapper if you want an explicit one-shot provider override
+- `codex-with-privacy.ps1 -Exec`: advanced wrapper for non-interactive one-shot usage
 
 ## Notes
 
