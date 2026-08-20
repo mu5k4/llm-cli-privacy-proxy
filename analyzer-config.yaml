@@ -1,0 +1,67 @@
+supported_languages:
+  - en
+  - lt
+
+default_score_threshold: 0.3
+
+nlp_configuration:
+  nlp_engine_name: no_op
+  models:
+    - lang_code: en
+      model_name: noop
+    - lang_code: lt
+      model_name: noop
+
+recognizer_registry:
+  recognizers:
+    - name: GLiNERRecognizer
+      type: predefined
+      enabled: true
+      supported_languages:
+        - en
+        - lt
+      model_name: urchade/gliner_multi_pii-v1
+      threshold: 0.3
+      map_location: cpu
+
+    - name: EmailRecognizer
+      type: predefined
+      supported_languages:
+        - en
+        - lt
+
+    - name: IbanRecognizer
+      type: predefined
+      supported_languages:
+        - en
+        - lt
+
+    - name: IpRecognizer
+      type: predefined
+      supported_languages:
+        - en
+        - lt
+
+    - name: PhoneRecognizer
+      type: predefined
+      supported_languages:
+        - en
+        - lt
+
+    - name: UrlRecognizer
+      type: predefined
+      supported_languages:
+        - en
+        - lt
+
+    - name: CreditCardRecognizer
+      type: predefined
+      supported_languages:
+        - en
+        - lt
+
+    - name: CryptoRecognizer
+      type: predefined
+      supported_languages:
+        - en
+        - lt
