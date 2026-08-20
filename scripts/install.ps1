@@ -9,11 +9,15 @@ $configResult = Ensure-CodexProviderConfig
 $defaultProviderResult = Ensure-CodexDefaultProvider
 $trustResult = Ensure-CodexProjectTrust
 
-Invoke-Compose @("build")
-Invoke-Compose @("up", "-d")
+if (Test-PrivacyStackHealthy) {
+    Write-Output "Privacy stack already healthy; skipping rebuild and restart."
+} else {
+    Invoke-Compose @("build")
+    Invoke-Compose @("up", "-d")
 
-Wait-HttpOk -Uri "$Script:AnalyzerBaseUrl/health"
-Wait-HttpOk -Uri "$Script:ProxyBaseUrl/health"
+    Wait-HttpOk -Uri "$Script:AnalyzerBaseUrl/health"
+    Wait-HttpOk -Uri "$Script:ProxyBaseUrl/health"
+}
 
 & (Join-Path $PSScriptRoot "test.ps1")
 if ($LASTEXITCODE -ne 0) {

@@ -127,6 +127,24 @@ function Get-HealthSummary {
     }
 }
 
+function Test-HttpOk {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Uri
+    )
+
+    try {
+        $response = Invoke-WebRequest -Uri $Uri -UseBasicParsing -TimeoutSec 5
+        return $response.StatusCode -eq 200
+    } catch {
+        return $false
+    }
+}
+
+function Test-PrivacyStackHealthy {
+    return ((Test-HttpOk -Uri "$Script:AnalyzerBaseUrl/health") -and (Test-HttpOk -Uri "$Script:ProxyBaseUrl/health"))
+}
+
 function Ensure-CodexProviderConfig {
     if (-not (Test-Path $Script:CodexConfigDir)) {
         New-Item -ItemType Directory -Force -Path $Script:CodexConfigDir | Out-Null
