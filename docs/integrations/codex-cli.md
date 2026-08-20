@@ -93,18 +93,31 @@ What `./scripts/codex-status.ps1` should show:
 - `Analyzer health: ok`
 - `Proxy health: ok`
 
+## Troubleshooting
+
+- `codex-status.ps1` shows `Provider configured: False`: rerun `./scripts/install.ps1`.
+- `codex-status.ps1` shows `Default model_provider` other than `privacy`: rerun `./scripts/install.ps1`.
+- `Analyzer health: unreachable` or `Proxy health: unreachable`: run `./scripts/start.ps1`, then rerun `./scripts/codex-status.ps1`.
+- Port collision on the local proxy or analyzer: edit `.env`, change `PROXY_PORT` or `ANALYZER_PORT`, restart the stack, then rerun `./scripts/install.ps1`.
+- `codex` starts but does not appear to use the proxy: run `docker logs -f llm-cli-privacy-proxy` and confirm you see `POST /responses` after sending a Codex prompt.
+- `scripts/demo-proof.ps1` is the fastest local anonymization proof if you want something stronger than raw traffic logs.
+
 ## Proof For Teammates
 
 If you want a concrete demo that does not depend on guessing from container logs:
 
 1. Start the stack with `./scripts/start.ps1`.
-2. In one terminal, optionally watch proxy traffic with `docker logs -f llm-cli-privacy-proxy`.
-3. In another terminal, call `/protect` with sample PII or secrets.
-4. Show that the response contains `GP_*` placeholders and a `session_id`.
-5. Call `/restore` with that `session_id` and the placeholder text.
-6. Show that the original values return locally.
+2. Run `./scripts/demo-proof.ps1`.
+3. Optionally, in another terminal, watch proxy traffic with `docker logs -f llm-cli-privacy-proxy`.
+4. For live Codex proof, send a Codex prompt and confirm you see `POST /responses`.
 
-Example:
+Automated example:
+
+```powershell
+./scripts/demo-proof.ps1
+```
+
+Manual example:
 
 ```powershell
 $body = @{
@@ -118,7 +131,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/protect" -Method Post -ContentType
 What to show:
 
 - proxy logs show `POST /responses` for real Codex traffic or `/protect` for the explicit demo
-- `/protect` output shows tokenized placeholders instead of raw values
+- `/protect` output shows `GP_*` placeholders instead of raw values
 - `/restore` output shows the original values reconstructed locally
 
 This is stronger evidence than raw container logs alone, because the current proxy logs intentionally avoid printing prompt contents.
@@ -127,10 +140,17 @@ This is stronger evidence than raw container logs alone, because the current pro
 
 - `install.ps1`: one-time Codex + proxy setup
 - `codex-status.ps1`: readiness check for login, provider, and local proxy health
+- `demo-proof.ps1`: teammate-facing proof that protect/restore still works
 - `start.ps1`: bring the local privacy stack up before coding sessions
 - `stop.ps1`: stop the local privacy stack when done
-- `codex-with-privacy.ps1`: advanced wrapper if you want an explicit one-shot provider override
+- `codex-with-privacy.ps1`: advanced wrapper for explicit one-shot provider override
 - `codex-with-privacy.ps1 -Exec`: advanced wrapper for non-interactive one-shot usage
+
+## Advanced Wrapper
+
+Most teammates should ignore this and use plain `codex` after `install.ps1`.
+
+Use the wrapper only when you deliberately want an explicit per-run override instead of relying on the installed default provider.
 
 ## Notes
 
