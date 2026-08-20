@@ -103,6 +103,49 @@ Release metadata lives in `./VERSION`, `./CHANGELOG.md`, and `./CONTRIBUTING.md`
 ./scripts/test.ps1
 ```
 
+## Privacy Proof Demo
+
+Use this when you want to prove to yourself or a colleague that the proxy is anonymizing sensitive values locally before upstream use.
+
+1. Start the stack with `./scripts/start.ps1`.
+2. Send a sample prompt to the local `/protect` endpoint.
+3. Confirm the response replaces sensitive values with `GP_*` tokens.
+4. Send a tokenized message plus the returned `session_id` to `/restore`.
+5. Confirm the original values are restored locally.
+
+Protect example:
+
+```powershell
+$body = @{
+  text = "My name is Jonas, email jonas@example.com, phone +37061234567, and API key sk-test-1234567890"
+  language = "en"
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/protect" -Method Post -ContentType "application/json" -Body $body
+```
+
+Expected result:
+
+- `text` contains placeholder tokens such as `GP_PERSON_0001`, `GP_EMAIL_ADDRESS_0001`, and `GP_SECRET_0001`
+- `session_id` is returned for local restoration
+
+Restore example:
+
+```powershell
+$restoredBody = @{
+  session_id = "<session_id from protect>"
+  text = "Please contact GP_PERSON_0001 at GP_EMAIL_ADDRESS_0001 or call GP_PHONE_NUMBER_0001. The key is GP_SECRET_0001."
+} | ConvertTo-Json
+
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/restore" -Method Post -ContentType "application/json" -Body $restoredBody
+```
+
+Expected result:
+
+- `text` contains the original values again
+
+If you also want transport proof, run `docker logs -f llm-cli-privacy-proxy` in another terminal and then send a Codex prompt. A `POST /responses` log entry proves the request went through the proxy, while the `/protect` and `/restore` demo proves the anonymization and restoration behavior.
+
 ## Stop The Proxy
 
 ```powershell
@@ -115,6 +158,12 @@ Release metadata lives in `./VERSION`, `./CHANGELOG.md`, and `./CONTRIBUTING.md`
 - [Claude Code setup](./docs/integrations/claude-code.md)
 
 The proxy should stay client-agnostic. Any client-specific auth, environment variables, base URL settings, or config file edits belong in the integration guides rather than in the core runtime docs.
+
+For Codex CLI specifically, the intended daily workflow after installation is:
+
+1. start the privacy stack
+2. open the repo you want
+3. run `codex` normally
 
 Planned future integrations should be added under `docs/integrations/` without renaming the proxy itself.
 
