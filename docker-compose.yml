@@ -1,0 +1,63 @@
+name: llm-cli-privacy-proxy
+
+services:
+  presidio-analyzer:
+    build:
+      context: .
+      dockerfile: Dockerfile.analyzer
+    image: llm-cli-privacy-analyzer:0.1.0
+    container_name: llm-cli-privacy-analyzer
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ANALYZER_CONF_FILE: /app/analyzer-config.yaml
+      GUNICORN_CMD_ARGS: "--timeout 300"
+      WORKERS: "1"
+    volumes:
+      - ./analyzer-config.yaml:/app/analyzer-config.yaml:ro
+    ports:
+      - "${PROXY_BIND_HOST:-127.0.0.1}:${ANALYZER_PORT:-5001}:3000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3000/health', timeout=5)"
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 20s
+
+  privacy-service:
+    build:
+      context: ./privacy-service
+    image: llm-cli-privacy-proxy:0.1.0
+    container_name: llm-cli-privacy-proxy
+    depends_on:
+      presidio-analyzer:
+        condition: service_healthy
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PRESIDIO_URL: "${PRESIDIO_URL:-http://presidio-analyzer:3000}"
+      UPSTREAM_BASE: "${UPSTREAM_BASE:-https://chatgpt.com/backend-api/codex}"
+    volumes:
+      - ./privacy-cache:/app/cache
+    ports:
+      - "${PROXY_BIND_HOST:-127.0.0.1}:${PROXY_PORT:-8000}:8000"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 10s

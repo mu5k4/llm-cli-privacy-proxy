@@ -1,0 +1,5 @@
+.env
+dist/
+privacy-cache/*.json
+privacy-service/__pycache__/
+*.bak
