@@ -44,6 +44,7 @@ Today that means:
 - `scripts/regression.ps1`: run expanded regression coverage, optionally including disruptive fail-closed checks
 - `scripts/install.ps1`: Codex CLI integration helper
 - `scripts/codex-status.ps1`: verify Codex login, provider config, and local proxy health
+- `scripts/demo-proof.ps1`: run a local protect/restore proof and fail if anonymization or restoration breaks
 - `scripts/codex-with-privacy.ps1`: optional advanced wrapper for one-shot provider override cases
 - `scripts/package.ps1`: build a clean shareable zip without local runtime state
 
@@ -117,6 +118,12 @@ Day-to-day usage after setup:
 ./scripts/status.ps1
 ```
 
+## Run The Demo Proof
+
+```powershell
+./scripts/demo-proof.ps1
+```
+
 ## Run The Smoke Test
 
 ```powershell
@@ -126,6 +133,14 @@ Day-to-day usage after setup:
 ## Privacy Proof Demo
 
 Use this when you want to prove to yourself or a colleague that the proxy is anonymizing sensitive values locally before upstream use.
+
+Fastest path:
+
+```powershell
+./scripts/demo-proof.ps1
+```
+
+Manual path:
 
 1. Start the stack with `./scripts/start.ps1`.
 2. Send a sample prompt to the local `/protect` endpoint.
@@ -146,7 +161,7 @@ Invoke-RestMethod -Uri "http://127.0.0.1:8000/protect" -Method Post -ContentType
 
 Expected result:
 
-- `text` contains placeholder tokens such as `GP_PERSON_0001`, `GP_EMAIL_ADDRESS_0001`, and `GP_SECRET_0001`
+- `text` contains placeholder tokens such as `GP_PERSON_0001`, `GP_EMAIL_ADDRESS_0001`, or other `GP_*` replacements chosen by the detectors
 - `session_id` is returned for local restoration
 
 Restore example:
@@ -154,7 +169,7 @@ Restore example:
 ```powershell
 $restoredBody = @{
   session_id = "<session_id from protect>"
-  text = "Please contact GP_PERSON_0001 at GP_EMAIL_ADDRESS_0001 or call GP_PHONE_NUMBER_0001. The key is GP_SECRET_0001."
+  text = "<protected text returned by /protect>"
 } | ConvertTo-Json
 
 Invoke-RestMethod -Uri "http://127.0.0.1:8000/restore" -Method Post -ContentType "application/json" -Body $restoredBody
@@ -165,6 +180,15 @@ Expected result:
 - `text` contains the original values again
 
 If you also want transport proof, run `docker logs -f llm-cli-privacy-proxy` in another terminal and then send a Codex prompt. A `POST /responses` log entry proves the request went through the proxy, while the `/protect` and `/restore` demo proves the anonymization and restoration behavior.
+
+## Troubleshooting
+
+- `docker` or `codex` not found: install the missing tool and ensure it is on `PATH`, then rerun `./scripts/install.ps1`.
+- `Analyzer health: unreachable` or `Proxy health: unreachable`: run `./scripts/start.ps1`, then recheck with `./scripts/status.ps1` or `./scripts/codex-status.ps1`.
+- Port already in use on `127.0.0.1:8000` or `127.0.0.1:5001`: change `PROXY_PORT` or `ANALYZER_PORT` in `.env`, restart the stack, then rerun `./scripts/install.ps1`.
+- `Default model_provider` is not `privacy`: rerun `./scripts/install.ps1`, then confirm with `./scripts/codex-status.ps1`.
+- `codex-status.ps1` healthy output should show `Provider configured: True`, `Default model_provider: privacy`, `Analyzer health: ok`, and `Proxy health: ok`.
+- `demo-proof.ps1` fails: fix stack health first with `./scripts/start.ps1`, then rerun the proof. If it still fails, use `./scripts/regression.ps1` for a broader check.
 
 ## Stop The Proxy
 
@@ -186,6 +210,13 @@ For Codex CLI specifically, the intended daily workflow after installation is:
 3. run `codex` normally
 
 Planned future integrations should be added under `docs/integrations/` without renaming the proxy itself.
+
+## Advanced Usage
+
+Most users should ignore the wrapper and run plain `codex` after the one-time install.
+
+- `scripts/codex-with-privacy.ps1`: explicit one-shot provider override for interactive runs
+- `scripts/codex-with-privacy.ps1 -Exec`: explicit one-shot provider override for non-interactive runs
 
 ## Sharing With Colleagues
 
