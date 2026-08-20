@@ -69,14 +69,14 @@ function Assert-Command {
 
 function Invoke-Compose {
     param(
-        [Parameter(ValueFromRemainingArguments = $true)]
-        [string[]]$Args
+        [string[]]$ComposeArgs
     )
 
-    & docker compose -f $Script:ComposeFile @Args
+    $dockerArgs = @("compose", "-f", $Script:ComposeFile) + $ComposeArgs
+    & docker @dockerArgs
 
     if ($LASTEXITCODE -ne 0) {
-        throw "docker compose $($Args -join ' ') failed."
+        throw "docker compose $($ComposeArgs -join ' ') failed."
     }
 }
 
@@ -175,6 +175,53 @@ supports_websockets = false
     }
 }
 
+function Ensure-CodexDefaultProvider {
+    $providerId = $Script:ProjectConfig["CODEX_PROVIDER_ID"]
+
+    if (-not (Test-Path $Script:CodexConfigDir)) {
+        New-Item -ItemType Directory -Force -Path $Script:CodexConfigDir | Out-Null
+    }
+
+    if (-not (Test-Path $Script:CodexConfigPath)) {
+        Set-Content -Path $Script:CodexConfigPath -Value ("model_provider = `"$providerId`"" + [Environment]::NewLine) -Encoding UTF8
+        return @{
+            Changed = $true
+            BackupPath = $null
+        }
+    }
+
+    $content = Get-Content -Raw $Script:CodexConfigPath
+    $updated = $content
+
+    if ($content -match '(?m)^model_provider\s*=') {
+        $updated = [regex]::Replace(
+            $content,
+            '(?m)^model_provider\s*=.*$',
+            "model_provider = `"$providerId`""
+        )
+    } else {
+        $trimmed = $content.TrimEnd()
+        $updated = $trimmed + [Environment]::NewLine + "model_provider = `"$providerId`"" + [Environment]::NewLine
+    }
+
+    if ($updated -eq $content) {
+        return @{
+            Changed = $false
+            BackupPath = $null
+        }
+    }
+
+    $timestamp = Get-Date -Format "yyyyMMddHHmmss"
+    $backupPath = "$Script:CodexConfigPath.$timestamp.default-provider.bak"
+    Copy-Item -LiteralPath $Script:CodexConfigPath -Destination $backupPath
+    Set-Content -Path $Script:CodexConfigPath -Value $updated -Encoding UTF8
+
+    return @{
+        Changed = $true
+        BackupPath = $backupPath
+    }
+}
+
 function Ensure-CodexProjectTrust {
     param(
         [string]$ProjectPath = $Script:ProjectRoot
@@ -254,4 +301,19 @@ function Test-CodexProviderConfigured {
     $content = Get-Content -Raw $Script:CodexConfigPath
     $providerPattern = '^\[model_providers\.' + [regex]::Escape($providerId) + '\]$'
     return $content -match "(?m)$providerPattern"
+}
+
+function Get-CodexDefaultProvider {
+    if (-not (Test-Path $Script:CodexConfigPath)) {
+        return ""
+    }
+
+    $content = Get-Content -Raw $Script:CodexConfigPath
+    $match = [regex]::Match($content, '(?m)^model_provider\s*=\s*"([^"]+)"')
+
+    if ($match.Success) {
+        return $match.Groups[1].Value
+    }
+
+    return ""
 }
