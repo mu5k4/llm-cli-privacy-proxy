@@ -90,6 +90,14 @@ function Set-CodexConfigContent {
     return $backupPath
 }
 
+function Get-CodexConfigContent {
+    if (-not (Test-Path $Script:CodexConfigPath)) {
+        return ""
+    }
+
+    return (Get-Content -Raw $Script:CodexConfigPath)
+}
+
 function Remove-TomlSectionsByHeader {
     param(
         [Parameter(Mandatory = $true)]
@@ -120,6 +128,46 @@ function Remove-TomlSectionsByHeader {
     }
 
     return ($result -join [Environment]::NewLine)
+}
+
+function Add-TomlSection {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content,
+        [Parameter(Mandatory = $true)]
+        [string]$Section
+    )
+
+    $trimmed = $Content.TrimEnd()
+    if (-not $trimmed) {
+        return ($Section.TrimEnd() + [Environment]::NewLine)
+    }
+
+    return ($trimmed + [Environment]::NewLine + [Environment]::NewLine + $Section.TrimEnd() + [Environment]::NewLine)
+}
+
+function Set-CodexDefaultProviderInContent {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content,
+        [Parameter(Mandatory = $true)]
+        [string]$ProviderId
+    )
+
+    if ($Content -match '(?m)^model_provider\s*=') {
+        return [regex]::Replace(
+            $Content,
+            '(?m)^model_provider\s*=.*$',
+            "model_provider = `"$ProviderId`""
+        )
+    }
+
+    $trimmed = $Content.TrimEnd()
+    if (-not $trimmed) {
+        return ("model_provider = `"$ProviderId`"" + [Environment]::NewLine)
+    }
+
+    return ($trimmed + [Environment]::NewLine + "model_provider = `"$ProviderId`"" + [Environment]::NewLine)
 }
 
 function Assert-Command {
@@ -451,6 +499,141 @@ function Remove-CodexProjectTrust {
         Changed = $true
         BackupPath = $backupPath
     }
+}
+
+function Get-CodexInstallConfigPlan {
+    if (-not (Test-Path $Script:CodexConfigDir)) {
+        New-Item -ItemType Directory -Force -Path $Script:CodexConfigDir | Out-Null
+    }
+
+    $providerId = $Script:ProjectConfig["CODEX_PROVIDER_ID"]
+    $providerName = $Script:ProjectConfig["PRIVACY_PROVIDER_NAME"]
+    $normalizedPath = $Script:ProjectRoot.ToLowerInvariant().Replace("\", "\\")
+    $providerHeader = "[model_providers.$providerId]"
+    $trustHeader = "[projects.'$normalizedPath']"
+    $providerBlock = @"
+[model_providers.$providerId]
+name = "$providerName"
+base_url = "$Script:ProxyBaseUrl"
+wire_api = "responses"
+requires_openai_auth = true
+supports_websockets = false
+"@
+    $trustBlock = @"
+[projects.'$normalizedPath']
+trust_level = "trusted"
+"@
+
+    $originalContent = Get-CodexConfigContent
+    $updatedContent = $originalContent
+
+    $providerChanged = $false
+    if ($updatedContent -notmatch "(?m)^\[model_providers\.$([regex]::Escape($providerId))\]\r?$") {
+        $updatedContent = Add-TomlSection -Content $updatedContent -Section $providerBlock
+        $providerChanged = $true
+    }
+
+    $defaultProviderChanged = $false
+    $currentProvider = ""
+    if ($originalContent) {
+        $currentProvider = Get-CodexDefaultProvider
+    }
+    $providerUpdatedContent = Set-CodexDefaultProviderInContent -Content $updatedContent -ProviderId $providerId
+    if ($providerUpdatedContent -ne $updatedContent) {
+        $updatedContent = $providerUpdatedContent
+        $defaultProviderChanged = $true
+    }
+
+    $trustChanged = $false
+    if ($updatedContent -notmatch "(?m)^\[projects\.$([regex]::Escape("'" + $normalizedPath + "'"))\]\r?$") {
+        $updatedContent = Add-TomlSection -Content $updatedContent -Section $trustBlock
+        $trustChanged = $true
+    }
+
+    return @{
+        OriginalContent = $originalContent
+        UpdatedContent = $updatedContent
+        ProviderChanged = $providerChanged
+        DefaultProviderChanged = $defaultProviderChanged
+        TrustChanged = $trustChanged
+        CurrentDefaultProvider = $currentProvider
+        Changed = ($updatedContent -ne $originalContent)
+    }
+}
+
+function Save-CodexInstallConfigPlan {
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Plan
+    )
+
+    if (-not $Plan.Changed) {
+        return $null
+    }
+
+    return (Set-CodexConfigContent -Content $Plan.UpdatedContent -BackupSuffix "install")
+}
+
+function Get-CodexUninstallConfigPlan {
+    param(
+        [string]$FallbackProvider = "openai"
+    )
+
+    $providerId = $Script:ProjectConfig["CODEX_PROVIDER_ID"]
+    $normalizedPath = $Script:ProjectRoot.ToLowerInvariant().Replace("\", "\\")
+    $legacyPath = $Script:ProjectRoot.ToLowerInvariant()
+    $providerHeader = "[model_providers.$providerId]"
+    $trustHeaders = @(
+        "[projects.'$normalizedPath']",
+        "[projects.'$legacyPath']"
+    )
+
+    $originalContent = Get-CodexConfigContent
+    $updatedContent = $originalContent
+
+    $providerRemovedContent = Remove-TomlSectionsByHeader -Content $updatedContent -Headers @($providerHeader)
+    $providerChanged = ($providerRemovedContent -ne $updatedContent)
+    $updatedContent = $providerRemovedContent
+
+    $currentProvider = ""
+    if ($originalContent) {
+        $currentProvider = Get-CodexDefaultProvider
+    }
+
+    $defaultProviderChanged = $false
+    if ($currentProvider -eq $providerId) {
+        $restoredContent = Set-CodexDefaultProviderInContent -Content $updatedContent -ProviderId $FallbackProvider
+        $defaultProviderChanged = ($restoredContent -ne $updatedContent)
+        $updatedContent = $restoredContent
+    }
+
+    $trustRemovedContent = Remove-TomlSectionsByHeader -Content $updatedContent -Headers $trustHeaders
+    $trustChanged = ($trustRemovedContent -ne $updatedContent)
+    $updatedContent = $trustRemovedContent
+
+    return @{
+        OriginalContent = $originalContent
+        UpdatedContent = $updatedContent
+        ProviderChanged = $providerChanged
+        DefaultProviderChanged = $defaultProviderChanged
+        TrustChanged = $trustChanged
+        CurrentDefaultProvider = $currentProvider
+        FallbackProvider = $FallbackProvider
+        Changed = ($updatedContent -ne $originalContent)
+    }
+}
+
+function Save-CodexUninstallConfigPlan {
+    param(
+        [Parameter(Mandatory = $true)]
+        [hashtable]$Plan
+    )
+
+    if (-not $Plan.Changed) {
+        return $null
+    }
+
+    return (Set-CodexConfigContent -Content $Plan.UpdatedContent -BackupSuffix "uninstall")
 }
 
 function Get-CodexLoginStatus {

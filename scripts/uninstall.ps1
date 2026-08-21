@@ -45,56 +45,31 @@ if (-not $KeepEnv -and (Test-Path $Script:EnvPath)) {
 }
 
 if (-not $KeepCodexConfig) {
-    $providerRemoval = @{
-        Changed = $false
-        BackupPath = $null
-    }
-    $defaultProviderRestore = @{
-        Changed = $false
-        BackupPath = $null
-        PreviousValue = ""
-    }
-    $trustRemoval = @{
-        Changed = $false
-        BackupPath = $null
+    $configPlan = Get-CodexUninstallConfigPlan -FallbackProvider $FallbackProvider
+    $configBackupPath = $null
+
+    if ($PSCmdlet.ShouldProcess($Script:CodexConfigPath, "Remove provider '$providerId', restore default model_provider, and remove the trusted-project entry")) {
+        $configBackupPath = Save-CodexUninstallConfigPlan -Plan $configPlan
     }
 
-    if ($PSCmdlet.ShouldProcess($Script:CodexConfigPath, "Remove provider '$providerId'")) {
-        $providerRemoval = Remove-CodexProviderConfig
-    }
-
-    if ($providerRemoval.Changed) {
+    if ($configPlan.ProviderChanged) {
         Add-UninstallResult -Name "Provider removal" -Detail "Removed provider '$providerId' from $Script:CodexConfigPath"
-        if ($providerRemoval.BackupPath) {
-            Add-UninstallResult -Name "Provider backup" -Detail $providerRemoval.BackupPath
+        if ($configBackupPath) {
+            Add-UninstallResult -Name "Config backup" -Detail $configBackupPath
         }
     }
 
-    if ($PSCmdlet.ShouldProcess($Script:CodexConfigPath, "Set default model_provider to '$FallbackProvider' when current provider is '$providerId'")) {
-        $defaultProviderRestore = Restore-CodexDefaultProvider -FallbackProvider $FallbackProvider
+    if ($configPlan.DefaultProviderChanged) {
+        Add-UninstallResult -Name "Default provider restore" -Detail "Changed model_provider from '$($configPlan.CurrentDefaultProvider)' to '$FallbackProvider'"
     }
 
-    if ($defaultProviderRestore.Changed) {
-        Add-UninstallResult -Name "Default provider restore" -Detail "Changed model_provider from '$($defaultProviderRestore.PreviousValue)' to '$FallbackProvider'"
-        if ($defaultProviderRestore.BackupPath) {
-            Add-UninstallResult -Name "Default provider backup" -Detail $defaultProviderRestore.BackupPath
-        }
-    }
-
-    if ($PSCmdlet.ShouldProcess($Script:CodexConfigPath, "Remove trusted-project entry for $Script:ProjectRoot")) {
-        $trustRemoval = Remove-CodexProjectTrust
-    }
-
-    if ($trustRemoval.Changed) {
+    if ($configPlan.TrustChanged) {
         Add-UninstallResult -Name "Project trust removal" -Detail "Removed trusted-project entry for $Script:ProjectRoot"
-        if ($trustRemoval.BackupPath) {
-            Add-UninstallResult -Name "Project trust backup" -Detail $trustRemoval.BackupPath
-        }
     }
 
     if ($WhatIfPreference) {
         Add-UninstallResult -Name "Codex config" -Detail "Preview only. Run without -WhatIf to remove the provider, reset the default provider, and remove project trust."
-    } elseif (-not $providerRemoval.Changed -and -not $defaultProviderRestore.Changed -and -not $trustRemoval.Changed) {
+    } elseif (-not $configPlan.ProviderChanged -and -not $configPlan.DefaultProviderChanged -and -not $configPlan.TrustChanged) {
         Add-UninstallResult -Name "Codex config" -Detail "No privacy-specific Codex config changes were present."
     }
 }
