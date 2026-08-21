@@ -5,9 +5,8 @@ Assert-Command -Name "codex" -DisplayName "Codex CLI"
 
 Ensure-ProjectDirectories
 
-$configResult = Ensure-CodexProviderConfig
-$defaultProviderResult = Ensure-CodexDefaultProvider
-$trustResult = Ensure-CodexProjectTrust
+$configPlan = Get-CodexInstallConfigPlan
+$configBackupPath = Save-CodexInstallConfigPlan -Plan $configPlan
 
 if (Test-PrivacyStackHealthy) {
     Write-Output "Privacy stack already healthy; skipping rebuild and restart."
@@ -24,31 +23,23 @@ if ($LASTEXITCODE -ne 0) {
     throw "Smoke test failed."
 }
 
-if ($configResult.BackupPath) {
-    Write-Output "Backed up Codex config to $($configResult.BackupPath)"
+if ($configBackupPath) {
+    Write-Output "Backed up Codex config to $configBackupPath"
 }
 
-if ($defaultProviderResult.BackupPath) {
-    Write-Output "Backed up Codex config for default provider update to $($defaultProviderResult.BackupPath)"
-}
-
-if ($trustResult.BackupPath) {
-    Write-Output "Backed up Codex config for trust update to $($trustResult.BackupPath)"
-}
-
-if ($configResult.Changed) {
+if ($configPlan.ProviderChanged) {
     Write-Output "Configured Codex provider '$($Script:ProjectConfig["CODEX_PROVIDER_ID"])' at $Script:CodexConfigPath"
 } else {
     Write-Output "Codex provider '$($Script:ProjectConfig["CODEX_PROVIDER_ID"])' already present at $Script:CodexConfigPath"
 }
 
-if ($defaultProviderResult.Changed) {
+if ($configPlan.DefaultProviderChanged) {
     Write-Output "Set Codex default model_provider to '$($Script:ProjectConfig["CODEX_PROVIDER_ID"])'."
 } else {
     Write-Output "Codex default model_provider already set to '$($Script:ProjectConfig["CODEX_PROVIDER_ID"])'."
 }
 
-if ($trustResult.Changed) {
+if ($configPlan.TrustChanged) {
     Write-Output "Marked proxy project as trusted in Codex config."
 }
 
