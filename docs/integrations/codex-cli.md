@@ -4,7 +4,7 @@ This integration keeps the proxy runtime separate from Codex-specific configurat
 
 ## Fast Path
 
-For a teammate who just needs the working Codex flow:
+For a user who just needs the working Codex flow:
 
 1. Run `./scripts/install.ps1`
 2. Run `./scripts/codex-status.ps1`
@@ -54,6 +54,12 @@ supports_websockets = false
 
 If you changed `CODEX_PROVIDER_ID`, `PRIVACY_PROVIDER_NAME`, or `PROXY_PORT` in `.env`, the installed provider block will follow those values.
 
+Important distinction:
+
+- `install.ps1` is the step that makes plain `codex` use the privacy proxy
+- `start.ps1` only starts the Docker services
+- without `install.ps1`, plain `codex` will keep using its existing provider even if the proxy stack is healthy
+
 ## Step By Step
 
 1. Sign in with `codex login` if needed.
@@ -77,7 +83,7 @@ codex exec "Summarize this repository"
 
 ## Readiness Checks
 
-Use these checks before real usage or teammate handoff:
+Use these checks before real usage:
 
 ```powershell
 ./scripts/doctor.ps1
@@ -98,13 +104,15 @@ What `./scripts/codex-status.ps1` should show:
 
 - `codex-status.ps1` shows `Provider configured: False`: rerun `./scripts/install.ps1`.
 - `codex-status.ps1` shows `Default model_provider` other than `privacy`: rerun `./scripts/install.ps1`.
+- `start.ps1` succeeds but Codex still bypasses the proxy: you likely skipped `./scripts/install.ps1`, so Codex was never pointed at the `privacy` provider.
 - `Analyzer health: unreachable` or `Proxy health: unreachable`: run `./scripts/start.ps1`, then rerun `./scripts/codex-status.ps1`.
 - Port collision on the local proxy or analyzer: edit `.env`, change `PROXY_PORT` or `ANALYZER_PORT`, restart the stack, then rerun `./scripts/install.ps1`.
 - `codex` starts but does not appear to use the proxy: run `docker logs -f llm-cli-privacy-proxy` and confirm you see `POST /responses` after sending a Codex prompt.
 - `scripts/demo-proof.ps1` is the fastest local anonymization proof if you want something stronger than raw traffic logs.
-- `scripts/doctor.ps1` is the fastest all-in-one teammate check because it covers Codex config, stack health, and the proof script together.
+- `scripts/doctor.ps1` is the fastest all-in-one check because it covers Codex config, stack health, and the proof script together.
+- `scripts/uninstall.ps1` removes the privacy-provider config and tears the stack back down if you want Codex to stop using the proxy.
 
-## Proof For Teammates
+## Proof Of Behavior
 
 If you want a concrete demo that does not depend on guessing from container logs:
 
@@ -141,9 +149,10 @@ This is stronger evidence than raw container logs alone, because the current pro
 ## Which Script To Use
 
 - `install.ps1`: one-time Codex + proxy setup
-- `doctor.ps1`: one-command teammate-facing readiness check
+- `uninstall.ps1`: remove Codex proxy settings and tear the local stack down
+- `doctor.ps1`: one-command readiness check
 - `codex-status.ps1`: readiness check for login, provider, and local proxy health
-- `demo-proof.ps1`: teammate-facing proof that protect/restore still works
+- `demo-proof.ps1`: proof that protect/restore still works
 - `start.ps1`: bring the local privacy stack up before coding sessions
 - `stop.ps1`: stop the local privacy stack when done
 - `codex-with-privacy.ps1`: advanced wrapper for explicit one-shot provider override
@@ -151,7 +160,7 @@ This is stronger evidence than raw container logs alone, because the current pro
 
 ## Advanced Wrapper
 
-Most teammates should ignore this and use plain `codex` after `install.ps1`.
+Most users should ignore this and use plain `codex` after `install.ps1`.
 
 Use the wrapper only when you deliberately want an explicit per-run override instead of relying on the installed default provider.
 

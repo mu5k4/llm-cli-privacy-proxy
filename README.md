@@ -36,18 +36,77 @@ Today that means:
 
 ## Current Scripts
 
-- `scripts/bootstrap.ps1`: create local `.env` and print next steps
-- `scripts/start.ps1`: build and start the stack
-- `scripts/stop.ps1`: stop the stack
-- `scripts/status.ps1`: show stack and health status
-- `scripts/test.ps1`: run the default regression suite
-- `scripts/regression.ps1`: run expanded regression coverage, optionally including disruptive fail-closed checks
-- `scripts/install.ps1`: Codex CLI integration helper
-- `scripts/codex-status.ps1`: verify Codex login, provider config, and local proxy health
-- `scripts/demo-proof.ps1`: run a local protect/restore proof and fail if anonymization or restoration breaks
-- `scripts/doctor.ps1`: run the teammate-facing end-to-end health check for Codex config, stack health, and demo proof
-- `scripts/codex-with-privacy.ps1`: optional advanced wrapper for one-shot provider override cases
-- `scripts/package.ps1`: build a clean shareable zip without local runtime state
+### Lifecycle
+
+- `scripts/bootstrap.ps1`
+  - purpose: create `.env` from `.env.example` if it does not exist
+  - changes: writes `.env`
+  - depends on: PowerShell only
+  - does not: build containers, start the stack, or change Codex config
+- `scripts/install.ps1`
+  - purpose: perform first-time Codex integration setup
+  - changes: may build/start the stack, runs the smoke test, writes the provider block to `~/.codex/config.toml`, sets `model_provider`, and marks this repo as trusted in Codex config
+  - depends on: Docker, Codex CLI, PowerShell
+  - expects: Docker Desktop running and `codex login` completed
+  - use when: plain `codex` should route through the proxy by default
+- `scripts/start.ps1`
+  - purpose: build and start the Docker stack
+  - changes: may build images, start containers, create `.env` if missing
+  - depends on: Docker, PowerShell
+  - does not: configure Codex to use the proxy
+  - use when: the proxy stack is already installed and you only need it running again
+- `scripts/stop.ps1`
+  - purpose: stop and remove the running compose stack
+  - changes: stops containers and removes the compose network
+  - depends on: Docker, PowerShell
+- `scripts/status.ps1`
+  - purpose: show compose container state plus proxy/analyzer health
+  - changes: none
+  - depends on: Docker, PowerShell
+- `scripts/uninstall.ps1`
+  - purpose: remove the local proxy integration
+  - changes: tears down the stack, removes local images unless told not to, removes `.env` unless told not to, removes privacy-specific Codex config unless told not to
+  - depends on: Docker, PowerShell
+  - optional flags: `-WhatIf`, `-KeepImages`, `-KeepEnv`, `-KeepCodexConfig`, `-FallbackProvider`
+
+### Validation
+
+- `scripts/codex-status.ps1`
+  - purpose: verify Codex login, installed provider config, default `model_provider`, and local stack health
+  - changes: none
+  - depends on: Docker, Codex CLI, PowerShell
+- `scripts/doctor.ps1`
+  - purpose: run the broad readiness check in one command
+  - changes: none
+  - depends on: Docker, Codex CLI, PowerShell, healthy stack for the demo-proof step
+  - checks: Codex login, provider presence, default provider, analyzer health, proxy health, `demo-proof.ps1`
+- `scripts/demo-proof.ps1`
+  - purpose: prove the local `/protect` and `/restore` flow is working
+  - changes: creates temporary protection sessions inside the running service
+  - depends on: PowerShell, healthy running stack
+  - does not: prove Codex is configured to use the proxy
+- `scripts/test.ps1`
+  - purpose: run the default regression entrypoint
+  - changes: none outside the running local stack
+  - depends on: PowerShell, healthy running stack
+- `scripts/regression.ps1`
+  - purpose: run expanded regression coverage
+  - changes: none outside the running local stack
+  - depends on: PowerShell, healthy running stack
+  - optional flags: `-IncludeDisruptive`
+
+### Utilities
+
+- `scripts/codex-with-privacy.ps1`
+  - purpose: one-shot explicit provider override for Codex instead of relying on the installed default provider
+  - changes: none to persistent config
+  - depends on: Codex CLI, PowerShell
+  - use when: you want an explicit per-run override
+- `scripts/package.ps1`
+  - purpose: create a clean shareable zip under `dist/`
+  - changes: writes a zip artifact in `dist/`
+  - depends on: PowerShell
+  - excludes: local runtime state such as `.env` and cache data
 
 The expanded regression suite covers protect/restore round trips, session reuse, `/responses` guard rails, streaming placeholder restoration at chunk boundaries, and optional fail-closed analyzer outage handling.
 
@@ -62,10 +121,10 @@ The expanded regression suite covers protect/restore round trips, session reuse,
 
 1. Run `./scripts/bootstrap.ps1`.
 2. Review `.env` if you want to override ports, provider naming, or upstream base URL.
-3. Run `./scripts/start.ps1`.
+3. Run `./scripts/start.ps1` if you want the stack available for manual `/protect` and `/restore` testing.
 4. Run `./scripts/test.ps1`.
 
-If your team is primarily using Codex CLI, continue with [Codex CLI setup](./docs/integrations/codex-cli.md).
+If you are using Codex CLI, continue with [Codex CLI setup](./docs/integrations/codex-cli.md).
 
 For deeper validation, run:
 
@@ -77,7 +136,7 @@ If `.env` does not exist, the PowerShell scripts will create it from `.env.examp
 
 ## Quick Share
 
-If you want to hand the project to a colleague as a clean archive:
+If you want a clean archive of the project:
 
 ```powershell
 ./scripts/package.ps1
@@ -87,7 +146,7 @@ That creates a timestamped zip under `./dist/` and excludes local runtime cache 
 
 Release metadata lives in `./VERSION`, `./CHANGELOG.md`, and `./CONTRIBUTING.md`.
 
-## Teammate Quickstart
+## Codex Quickstart
 
 For a first-time Codex user on Windows:
 
@@ -107,11 +166,24 @@ Day-to-day usage after setup:
 2. open the repo you want
 3. run `codex`
 
+Important distinction:
+
+- `scripts/start.ps1` only starts the local Docker services
+- `scripts/install.ps1` is the step that tells Codex to use the proxy by writing the provider config and default `model_provider`
+- if you skip `install.ps1`, a healthy local stack by itself does not make plain `codex` use the proxy
+
 ## Start The Proxy
 
 ```powershell
 ./scripts/start.ps1
 ```
+
+Use this when:
+
+- you already ran `./scripts/install.ps1` earlier and just need the stack running again for Codex
+- you want to test the proxy manually through `/protect` and `/restore`
+
+Do not treat `start.ps1` as a substitute for `install.ps1` when setting up Codex for the first time.
 
 ## Check Status
 
@@ -131,6 +203,14 @@ Day-to-day usage after setup:
 ./scripts/doctor.ps1
 ```
 
+This is the clearest single-command check when you want to confirm:
+
+- Codex is logged in
+- the `privacy` provider is installed
+- `model_provider` points at `privacy`
+- the analyzer and proxy are healthy
+- the `/protect` and `/restore` proof still works
+
 ## Run The Smoke Test
 
 ```powershell
@@ -139,7 +219,7 @@ Day-to-day usage after setup:
 
 ## Privacy Proof Demo
 
-Use this when you want to prove to yourself or a colleague that the proxy is anonymizing sensitive values locally before upstream use.
+Use this when you want to prove that the proxy is anonymizing sensitive values locally before upstream use.
 
 Fastest path:
 
@@ -196,13 +276,35 @@ If you also want transport proof, run `docker logs -f llm-cli-privacy-proxy` in 
 - `Default model_provider` is not `privacy`: rerun `./scripts/install.ps1`, then confirm with `./scripts/codex-status.ps1`.
 - `codex-status.ps1` healthy output should show `Provider configured: True`, `Default model_provider: privacy`, `Analyzer health: ok`, and `Proxy health: ok`.
 - `demo-proof.ps1` fails: fix stack health first with `./scripts/start.ps1`, then rerun the proof. If it still fails, use `./scripts/regression.ps1` for a broader check.
-- `doctor.ps1` is the fastest full readiness check for teammates because it bundles login, provider, health, and protect/restore proof into one command.
+- `doctor.ps1` is the fastest full readiness check because it bundles login, provider, health, and protect/restore proof into one command.
 
 ## Stop The Proxy
 
 ```powershell
 ./scripts/stop.ps1
 ```
+
+## Uninstall The Proxy Integration
+
+```powershell
+./scripts/uninstall.ps1
+```
+
+By default this will:
+
+- stop the local stack
+- remove the local Docker images built by this project
+- remove the project `.env`
+- remove the privacy provider block from `~/.codex/config.toml`
+- switch `model_provider` back to `openai` if it currently points at the privacy provider
+- remove the trusted-project entry for this proxy repo
+
+Useful options:
+
+- `./scripts/uninstall.ps1 -WhatIf`: preview the changes
+- `./scripts/uninstall.ps1 -KeepImages`: keep the built Docker images
+- `./scripts/uninstall.ps1 -KeepEnv`: keep the local `.env`
+- `./scripts/uninstall.ps1 -KeepCodexConfig`: tear down only the Docker stack and local files
 
 ## Integrations
 
@@ -226,9 +328,9 @@ Most users should ignore the wrapper and run plain `codex` after the one-time in
 - `scripts/codex-with-privacy.ps1`: explicit one-shot provider override for interactive runs
 - `scripts/codex-with-privacy.ps1 -Exec`: explicit one-shot provider override for non-interactive runs
 
-## Sharing With Colleagues
+## Sharing
 
-- Share the project folder without `.env` if you want teammates to start from the documented defaults.
+- Share the project folder without `.env` if you want recipients to start from the documented defaults.
 - Do not rely on `privacy-cache/*.json` as a portable artifact; it is local runtime state.
 - Keep client-specific setup in `docs/integrations/` so the core runtime remains reusable.
 - Prefer `./scripts/package.ps1` when you want a clean handoff artifact instead of a live working folder.
