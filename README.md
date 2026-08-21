@@ -45,6 +45,7 @@ Today that means:
 - `scripts/install.ps1`: Codex CLI integration helper
 - `scripts/codex-status.ps1`: verify Codex login, provider config, and local proxy health
 - `scripts/demo-proof.ps1`: run a local protect/restore proof and fail if anonymization or restoration breaks
+- `scripts/doctor.ps1`: run the teammate-facing end-to-end health check for Codex config, stack health, and demo proof
 - `scripts/codex-with-privacy.ps1`: optional advanced wrapper for one-shot provider override cases
 - `scripts/package.ps1`: build a clean shareable zip without local runtime state
 
@@ -124,6 +125,12 @@ Day-to-day usage after setup:
 ./scripts/demo-proof.ps1
 ```
 
+## Run The Doctor Check
+
+```powershell
+./scripts/doctor.ps1
+```
+
 ## Run The Smoke Test
 
 ```powershell
@@ -189,6 +196,7 @@ If you also want transport proof, run `docker logs -f llm-cli-privacy-proxy` in 
 - `Default model_provider` is not `privacy`: rerun `./scripts/install.ps1`, then confirm with `./scripts/codex-status.ps1`.
 - `codex-status.ps1` healthy output should show `Provider configured: True`, `Default model_provider: privacy`, `Analyzer health: ok`, and `Proxy health: ok`.
 - `demo-proof.ps1` fails: fix stack health first with `./scripts/start.ps1`, then rerun the proof. If it still fails, use `./scripts/regression.ps1` for a broader check.
+- `doctor.ps1` is the fastest full readiness check for teammates because it bundles login, provider, health, and protect/restore proof into one command.
 
 ## Stop The Proxy
 

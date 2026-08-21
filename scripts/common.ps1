@@ -171,7 +171,7 @@ supports_websockets = false
     }
 
     $content = Get-Content -Raw $Script:CodexConfigPath
-    $providerPattern = '^\[model_providers\.' + [regex]::Escape($providerId) + '\]$'
+    $providerPattern = '^\[model_providers\.' + [regex]::Escape($providerId) + '\]\r?$'
     if ($content -match "(?m)$providerPattern") {
         return @{
             Changed = $false
@@ -264,7 +264,7 @@ trust_level = "trusted"
     }
 
     $content = Get-Content -Raw $Script:CodexConfigPath
-    $projectPattern = '^\[projects\.' + [regex]::Escape("'" + $normalizedPath + "'") + '\]$'
+    $projectPattern = '^\[projects\.' + [regex]::Escape("'" + $normalizedPath + "'") + '\]\r?$'
     if ($content -match "(?m)$projectPattern") {
         return @{
             Changed = $false
@@ -289,13 +289,24 @@ trust_level = "trusted"
 function Get-CodexLoginStatus {
     Assert-Command -Name "codex" -DisplayName "Codex CLI"
     $authPath = Join-Path $Script:CodexConfigDir "auth.json"
+    $exitCode = $null
 
     try {
-        & codex login status > $null
-        if ($LASTEXITCODE -eq 0 -and (Test-Path $authPath)) {
+        cmd /c "codex login status >nul 2>nul" | Out-Null
+    } catch {
+    }
+
+    $exitCodeVar = Get-Variable LASTEXITCODE -ErrorAction SilentlyContinue
+    if ($exitCodeVar) {
+        $exitCode = [int]$exitCodeVar.Value
+    }
+
+    if ($exitCode -eq 0) {
+        if (Test-Path $authPath) {
             return "Logged in"
         }
-    } catch {
+
+        return "Login status command succeeded"
     }
 
     if (Test-Path $authPath) {
@@ -317,7 +328,7 @@ function Test-CodexProviderConfigured {
     }
 
     $content = Get-Content -Raw $Script:CodexConfigPath
-    $providerPattern = '^\[model_providers\.' + [regex]::Escape($providerId) + '\]$'
+    $providerPattern = '^\[model_providers\.' + [regex]::Escape($providerId) + '\]\r?$'
     return $content -match "(?m)$providerPattern"
 }
 
