@@ -80,6 +80,7 @@ codex exec "Summarize this repository"
 Use these checks before real usage or teammate handoff:
 
 ```powershell
+./scripts/doctor.ps1
 ./scripts/status.ps1
 ./scripts/test.ps1
 ./scripts/codex-status.ps1
@@ -101,6 +102,7 @@ What `./scripts/codex-status.ps1` should show:
 - Port collision on the local proxy or analyzer: edit `.env`, change `PROXY_PORT` or `ANALYZER_PORT`, restart the stack, then rerun `./scripts/install.ps1`.
 - `codex` starts but does not appear to use the proxy: run `docker logs -f llm-cli-privacy-proxy` and confirm you see `POST /responses` after sending a Codex prompt.
 - `scripts/demo-proof.ps1` is the fastest local anonymization proof if you want something stronger than raw traffic logs.
+- `scripts/doctor.ps1` is the fastest all-in-one teammate check because it covers Codex config, stack health, and the proof script together.
 
 ## Proof For Teammates
 
@@ -139,6 +141,7 @@ This is stronger evidence than raw container logs alone, because the current pro
 ## Which Script To Use
 
 - `install.ps1`: one-time Codex + proxy setup
+- `doctor.ps1`: one-command teammate-facing readiness check
 - `codex-status.ps1`: readiness check for login, provider, and local proxy health
 - `demo-proof.ps1`: teammate-facing proof that protect/restore still works
 - `start.ps1`: bring the local privacy stack up before coding sessions
