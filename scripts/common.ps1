@@ -54,6 +54,74 @@ $Script:ProjectConfig = Get-ProjectConfig
 $Script:ProxyBaseUrl = "http://{0}:{1}" -f $Script:ProjectConfig["PROXY_BIND_HOST"], $Script:ProjectConfig["PROXY_PORT"]
 $Script:AnalyzerBaseUrl = "http://{0}:{1}" -f $Script:ProjectConfig["PROXY_BIND_HOST"], $Script:ProjectConfig["ANALYZER_PORT"]
 
+function New-CodexConfigBackup {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Suffix
+    )
+
+    if (-not (Test-Path $Script:CodexConfigPath)) {
+        return $null
+    }
+
+    $timestamp = Get-Date -Format "yyyyMMddHHmmss"
+    $backupPath = "$Script:CodexConfigPath.$timestamp.$Suffix.bak"
+    Copy-Item -LiteralPath $Script:CodexConfigPath -Destination $backupPath
+    return $backupPath
+}
+
+function Set-CodexConfigContent {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content,
+        [Parameter(Mandatory = $true)]
+        [string]$BackupSuffix
+    )
+
+    $backupPath = New-CodexConfigBackup -Suffix $BackupSuffix
+    $trimmed = $Content.TrimEnd()
+    $finalContent = if ($trimmed) {
+        $trimmed + [Environment]::NewLine
+    } else {
+        ""
+    }
+
+    Set-Content -Path $Script:CodexConfigPath -Value $finalContent -Encoding UTF8
+    return $backupPath
+}
+
+function Remove-TomlSectionsByHeader {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Content,
+        [Parameter(Mandatory = $true)]
+        [string[]]$Headers
+    )
+
+    $lines = [regex]::Split($Content, "\r?\n")
+    $result = New-Object System.Collections.Generic.List[string]
+    $skipSection = $false
+
+    foreach ($line in $lines) {
+        if ($skipSection) {
+            if ($line -match '^\[') {
+                $skipSection = $false
+            } else {
+                continue
+            }
+        }
+
+        if ($Headers -contains $line.Trim()) {
+            $skipSection = $true
+            continue
+        }
+
+        $result.Add($line)
+    }
+
+    return ($result -join [Environment]::NewLine)
+}
+
 function Assert-Command {
     param(
         [Parameter(Mandatory = $true)]
@@ -179,13 +247,9 @@ supports_websockets = false
         }
     }
 
-    $timestamp = Get-Date -Format "yyyyMMddHHmmss"
-    $backupPath = "$Script:CodexConfigPath.$timestamp.bak"
-    Copy-Item -LiteralPath $Script:CodexConfigPath -Destination $backupPath
-
     $trimmed = $content.TrimEnd()
     $updated = $trimmed + [Environment]::NewLine + [Environment]::NewLine + $providerBlock + [Environment]::NewLine
-    Set-Content -Path $Script:CodexConfigPath -Value $updated -Encoding UTF8
+    $backupPath = Set-CodexConfigContent -Content $updated -BackupSuffix "provider"
 
     return @{
         Changed = $true
@@ -229,10 +293,7 @@ function Ensure-CodexDefaultProvider {
         }
     }
 
-    $timestamp = Get-Date -Format "yyyyMMddHHmmss"
-    $backupPath = "$Script:CodexConfigPath.$timestamp.default-provider.bak"
-    Copy-Item -LiteralPath $Script:CodexConfigPath -Destination $backupPath
-    Set-Content -Path $Script:CodexConfigPath -Value $updated -Encoding UTF8
+    $backupPath = Set-CodexConfigContent -Content $updated -BackupSuffix "default-provider"
 
     return @{
         Changed = $true
@@ -272,14 +333,120 @@ trust_level = "trusted"
         }
     }
 
-    $timestamp = Get-Date -Format "yyyyMMddHHmmss"
-    $backupPath = "$Script:CodexConfigPath.$timestamp.project-trust.bak"
-    Copy-Item -LiteralPath $Script:CodexConfigPath -Destination $backupPath
-
     $trimmed = $content.TrimEnd()
     $updated = $trimmed + [Environment]::NewLine + [Environment]::NewLine + $projectBlock + [Environment]::NewLine
-    Set-Content -Path $Script:CodexConfigPath -Value $updated -Encoding UTF8
+    $backupPath = Set-CodexConfigContent -Content $updated -BackupSuffix "project-trust"
 
+    return @{
+        Changed = $true
+        BackupPath = $backupPath
+    }
+}
+
+function Remove-CodexProviderConfig {
+    $providerId = $Script:ProjectConfig["CODEX_PROVIDER_ID"]
+
+    if (-not (Test-Path $Script:CodexConfigPath)) {
+        return @{
+            Changed = $false
+            BackupPath = $null
+        }
+    }
+
+    $content = Get-Content -Raw $Script:CodexConfigPath
+    $header = "[model_providers.$providerId]"
+    $updated = Remove-TomlSectionsByHeader -Content $content -Headers @($header)
+
+    if ($updated -eq $content) {
+        return @{
+            Changed = $false
+            BackupPath = $null
+        }
+    }
+
+    $backupPath = Set-CodexConfigContent -Content $updated -BackupSuffix "remove-provider"
+    return @{
+        Changed = $true
+        BackupPath = $backupPath
+    }
+}
+
+function Restore-CodexDefaultProvider {
+    param(
+        [string]$ProviderId = $Script:ProjectConfig["CODEX_PROVIDER_ID"],
+        [string]$FallbackProvider = "openai"
+    )
+
+    if (-not (Test-Path $Script:CodexConfigPath)) {
+        return @{
+            Changed = $false
+            BackupPath = $null
+            PreviousValue = ""
+        }
+    }
+
+    $content = Get-Content -Raw $Script:CodexConfigPath
+    $current = Get-CodexDefaultProvider
+
+    if ($current -ne $ProviderId) {
+        return @{
+            Changed = $false
+            BackupPath = $null
+            PreviousValue = $current
+        }
+    }
+
+    $updated = [regex]::Replace(
+        $content,
+        '(?m)^model_provider\s*=.*$',
+        "model_provider = `"$FallbackProvider`""
+    )
+
+    if ($updated -eq $content) {
+        return @{
+            Changed = $false
+            BackupPath = $null
+            PreviousValue = $current
+        }
+    }
+
+    $backupPath = Set-CodexConfigContent -Content $updated -BackupSuffix "restore-default-provider"
+    return @{
+        Changed = $true
+        BackupPath = $backupPath
+        PreviousValue = $current
+    }
+}
+
+function Remove-CodexProjectTrust {
+    param(
+        [string]$ProjectPath = $Script:ProjectRoot
+    )
+
+    if (-not (Test-Path $Script:CodexConfigPath)) {
+        return @{
+            Changed = $false
+            BackupPath = $null
+        }
+    }
+
+    $normalizedPath = $ProjectPath.ToLowerInvariant().Replace("\", "\\")
+    $legacyPath = $ProjectPath.ToLowerInvariant()
+    $content = Get-Content -Raw $Script:CodexConfigPath
+    $headers = @(
+        "[projects.'$normalizedPath']",
+        "[projects.'$legacyPath']"
+    )
+    $updated = Remove-TomlSectionsByHeader -Content $content -Headers $headers
+
+    if ($updated -eq $content) {
+        return @{
+            Changed = $false
+            BackupPath = $null
+        }
+    }
+
+    $backupPath = Set-CodexConfigContent -Content $updated -BackupSuffix "remove-project-trust"
     return @{
         Changed = $true
         BackupPath = $backupPath
