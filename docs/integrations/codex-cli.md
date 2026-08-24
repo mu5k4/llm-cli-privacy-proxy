@@ -7,7 +7,7 @@ This integration keeps the proxy runtime separate from Codex-specific configurat
 For a user who just needs the working Codex flow:
 
 1. Run `./scripts/install.ps1`
-2. Run `./scripts/codex-status.ps1`
+2. Run `./scripts/doctor.ps1` for the full readiness check, or `./scripts/codex-status.ps1` for the lighter status check
 3. Start the privacy stack when needed with `./scripts/start.ps1`
 4. Open any repo and run `codex` normally
 
@@ -69,7 +69,7 @@ Important distinction:
 1. Sign in with `codex login` if needed.
 2. Run `./scripts/install.ps1` once on the machine.
 3. Start the proxy stack with `./scripts/start.ps1`.
-4. Check readiness with `./scripts/codex-status.ps1`.
+4. Check readiness with `./scripts/doctor.ps1` for the full check, or `./scripts/codex-status.ps1` for the lighter status check.
 5. Open the repo you want to work in.
 6. Run `codex` normally.
 
@@ -104,6 +104,8 @@ What `./scripts/codex-status.ps1` should show:
 - `Analyzer health: ok`
 - `Proxy health: ok`
 
+`./scripts/doctor.ps1` now prints that same summary first, then continues with structured PASS/FAIL results and the demo-proof check.
+
 ## Troubleshooting
 
 - `codex-status.ps1` shows `Provider configured: False`: rerun `./scripts/install.ps1`.
@@ -114,7 +116,7 @@ What `./scripts/codex-status.ps1` should show:
 - Port collision on the local proxy or analyzer: edit `.env`, change `PROXY_PORT` or `ANALYZER_PORT`, restart the stack, then rerun `./scripts/install.ps1`.
 - `codex` starts but does not appear to use the proxy: run `docker logs -f llm-cli-privacy-proxy` and confirm you see `POST /responses` after sending a Codex prompt.
 - `scripts/demo-proof.ps1` is the fastest local anonymization proof if you want something stronger than raw traffic logs.
-- `scripts/doctor.ps1` is the fastest all-in-one check because it covers Codex config, stack health, and the proof script together.
+- `scripts/doctor.ps1` is the fastest all-in-one check because it now includes the `codex-status.ps1`-style status summary, Codex config checks, stack health, and the proof script together.
 - `scripts/uninstall.ps1` removes the privacy-provider config and tears the stack back down if you want Codex to stop using the proxy.
 
 ## Proof Of Behavior
@@ -156,7 +158,7 @@ This is stronger evidence than raw container logs alone, because the current pro
 - `install.ps1`: one-time Codex + proxy setup
 - `uninstall.ps1`: remove Codex proxy settings and tear the local stack down
 - `doctor.ps1`: one-command readiness check
-- `codex-status.ps1`: readiness check for login, provider, and local proxy health
+- `codex-status.ps1`: lighter readiness check for login, provider, and local proxy health
 - `demo-proof.ps1`: proof that protect/restore still works
 - `start.ps1`: bring the local privacy stack up before coding sessions
 - `stop.ps1`: stop the local privacy stack when done

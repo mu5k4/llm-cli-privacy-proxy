@@ -26,7 +26,7 @@ Run the install script first:
 Then verify it:
 
 ```powershell
-./scripts/codex-status.ps1
+./scripts/doctor.ps1
 ```
 
 Expected result:
@@ -36,6 +36,8 @@ Expected result:
 - `Default model_provider: privacy`
 - `Analyzer health: ok`
 - `Proxy health: ok`
+
+If they only want the lighter status summary without the full doctor run, they can use `./scripts/codex-status.ps1` instead.
 
 After that, day-to-day usage is:
 
@@ -113,7 +115,7 @@ Uninstall the integration:
 
 ```text
 Unzip the project and open PowerShell in the project folder.
-If you want Codex to use the proxy, close Codex first, run ./scripts/install.ps1, then run ./scripts/codex-status.ps1.
+If you want Codex to use the proxy, close Codex first, run ./scripts/install.ps1, then run ./scripts/doctor.ps1.
 If you only need the local proxy running, run ./scripts/bootstrap.ps1, ./scripts/start-stack.ps1, ./scripts/regression.ps1, and ./scripts/status.ps1.
 If install fails with "os error 32", close Codex and rerun the install script.
 ```
