@@ -18,7 +18,7 @@ if (Test-PrivacyStackHealthy) {
     Wait-HttpOk -Uri "$Script:ProxyBaseUrl/health"
 }
 
-& (Join-Path $PSScriptRoot "test.ps1")
+& (Join-Path $PSScriptRoot "regression.ps1")
 if ($LASTEXITCODE -ne 0) {
     throw "Smoke test failed."
 }

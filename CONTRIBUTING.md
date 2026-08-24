@@ -8,17 +8,17 @@
 
 ## First-Time Setup
 
-1. Run `./scripts/bootstrap.ps1`
+1. Run `./scripts/bootstrap.ps1`.
 2. Review `.env` if you need non-default ports or provider naming.
-3. Run `./scripts/start.ps1`
-4. Run `./scripts/test.ps1`
+3. Run `./scripts/start.ps1`.
+4. Run `./scripts/regression.ps1`.
 
 ## Before Sharing Changes
 
-1. Run `./scripts/test.ps1`
-2. Run `./scripts/status.ps1`
-3. If you changed lifecycle or packaging behavior, run `./scripts/package.ps1`
-4. Do not include local `.env` or `privacy-cache/*.json` in shared artifacts
+1. Run `./scripts/regression.ps1`.
+2. Run `./scripts/status.ps1`.
+3. If you changed lifecycle or packaging behavior, run `./scripts/package.ps1`.
+4. Do not include local `.env` or `privacy-cache/*.json` in shared artifacts.
 
 ## Versioning
 

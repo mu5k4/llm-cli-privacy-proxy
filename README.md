@@ -85,12 +85,8 @@ Today that means:
   - changes: creates temporary protection sessions inside the running service
   - depends on: PowerShell, healthy running stack
   - does not: prove Codex is configured to use the proxy
-- `scripts/test.ps1`
-  - purpose: run the default regression entrypoint
-  - changes: none outside the running local stack
-  - depends on: PowerShell, healthy running stack
 - `scripts/regression.ps1`
-  - purpose: run expanded regression coverage
+  - purpose: run regression coverage for the local stack
   - changes: none outside the running local stack
   - depends on: PowerShell, healthy running stack
   - optional flags: `-IncludeDisruptive`
@@ -119,20 +115,31 @@ The expanded regression suite covers protect/restore round trips, session reuse,
 
 ## First-Time Setup
 
-1. Run `./scripts/bootstrap.ps1`.
-2. Review `.env` if you want to override ports, provider naming, or upstream base URL.
-3. Run `./scripts/start.ps1` if you want the stack available for manual `/protect` and `/restore` testing.
-4. Run `./scripts/test.ps1`.
+Choose the setup path that matches what you are doing:
 
-If you are using Codex CLI, continue with [Codex CLI setup](./docs/integrations/codex-cli.md).
+### Core Runtime Or Manual Proxy Testing
+
+Use this when you want to work on the local stack itself, validate `/protect` and `/restore`, or prepare the project for another client integration.
+
+1. Run `./scripts/bootstrap.ps1`.
+2. Review `.env` if you want to override ports, provider naming, or upstream settings.
+3. Run `./scripts/start.ps1`.
+4. Run `./scripts/regression.ps1`.
+
+If `.env` does not exist, the lifecycle scripts will create it from `.env.example` automatically.
+
+### Codex CLI Integration
+
+Use this when you want plain `codex` to route through the proxy by default.
+
+1. Follow [Codex CLI setup](./docs/integrations/codex-cli.md).
+2. Run `./scripts/codex-status.ps1` after install to confirm login, provider configuration, and local health.
 
 For deeper validation, run:
 
 ```powershell
 ./scripts/regression.ps1 -IncludeDisruptive
 ```
-
-If `.env` does not exist, the PowerShell scripts will create it from `.env.example` automatically.
 
 ## Quick Share
 
@@ -155,6 +162,8 @@ For a first-time Codex user on Windows:
 3. Run `./scripts/codex-status.ps1`.
 4. When the stack is healthy, open any repo and run `codex` normally.
 
+On Windows, run `./scripts/install.ps1` while the Codex CLI is closed. This script rewrites `~/.codex/config.toml`, and an active Codex session can hold that file long enough to trigger an `os error 32` config-lock failure.
+
 ```powershell
 cd C:\path\to\your\repo
 codex
@@ -162,9 +171,9 @@ codex
 
 Day-to-day usage after setup:
 
-1. start the privacy stack with `./scripts/start.ps1`
-2. open the repo you want
-3. run `codex`
+1. Start the privacy stack with `./scripts/start.ps1`.
+2. Open the repo you want.
+3. Run `codex`.
 
 Important distinction:
 
@@ -211,10 +220,10 @@ This is the clearest single-command check when you want to confirm:
 - the analyzer and proxy are healthy
 - the `/protect` and `/restore` proof still works
 
-## Run The Smoke Test
+## Run The Regression Test
 
 ```powershell
-./scripts/test.ps1
+./scripts/regression.ps1
 ```
 
 ## Privacy Proof Demo
@@ -271,12 +280,13 @@ If you also want transport proof, run `docker logs -f llm-cli-privacy-proxy` in 
 ## Troubleshooting
 
 - `docker` or `codex` not found: install the missing tool and ensure it is on `PATH`, then rerun `./scripts/install.ps1`.
+- `Failed to read config file ... os error 32` during install or uninstall: close any running Codex CLI sessions, then rerun `./scripts/install.ps1` or `./scripts/uninstall.ps1`.
 - `Analyzer health: unreachable` or `Proxy health: unreachable`: run `./scripts/start.ps1`, then recheck with `./scripts/status.ps1` or `./scripts/codex-status.ps1`.
 - Port already in use on `127.0.0.1:8000` or `127.0.0.1:5001`: change `PROXY_PORT` or `ANALYZER_PORT` in `.env`, restart the stack, then rerun `./scripts/install.ps1`.
 - `Default model_provider` is not `privacy`: rerun `./scripts/install.ps1`, then confirm with `./scripts/codex-status.ps1`.
 - `codex-status.ps1` healthy output should show `Provider configured: True`, `Default model_provider: privacy`, `Analyzer health: ok`, and `Proxy health: ok`.
-- `demo-proof.ps1` fails: fix stack health first with `./scripts/start.ps1`, then rerun the proof. If it still fails, use `./scripts/regression.ps1` for a broader check.
-- `doctor.ps1` is the fastest full readiness check because it bundles login, provider, health, and protect/restore proof into one command.
+- `demo-proof.ps1` fails: fix stack health first with `./scripts/start.ps1`, then rerun the proof. If it still fails, use `./scripts/doctor.ps1` for a broader check.
+- `./scripts/doctor.ps1` is the fastest full readiness check because it bundles login, provider, health, and protect/restore proof into one command.
 
 ## Stop The Proxy
 
@@ -298,6 +308,8 @@ By default this will:
 - remove the privacy provider block from `~/.codex/config.toml`
 - switch `model_provider` back to `openai` if it currently points at the privacy provider
 - remove the trusted-project entry for this proxy repo
+
+On Windows, run `./scripts/uninstall.ps1` while the Codex CLI is closed for the same reason: uninstall also rewrites `~/.codex/config.toml`, so an active Codex session can interfere with the update.
 
 Useful options:
 
