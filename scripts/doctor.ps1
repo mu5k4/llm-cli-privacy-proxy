@@ -5,6 +5,11 @@ Assert-Command -Name "codex" -DisplayName "Codex CLI"
 Ensure-ProjectDirectories
 
 $expectedProviderId = $Script:ProjectConfig["CODEX_PROVIDER_ID"]
+$loginStatus = Get-CodexLoginStatus
+$providerConfigured = Test-CodexProviderConfigured
+$defaultProvider = Get-CodexDefaultProvider
+$analyzerHealth = Get-HealthSummary -Uri "$Script:AnalyzerBaseUrl/health"
+$proxyHealth = Get-HealthSummary -Uri "$Script:ProxyBaseUrl/health"
 $results = @()
 
 function Add-DoctorResult {
@@ -40,30 +45,27 @@ function Invoke-DoctorCheck {
 }
 
 Invoke-DoctorCheck -Name "Codex login" -Check {
-    $status = Get-CodexLoginStatus
-    Add-DoctorResult -Name "Codex login" -Passed ($status -match "^Logged in$") -Detail $status
+    Add-DoctorResult -Name "Codex login" -Passed ($loginStatus -match "^Logged in$") -Detail $loginStatus
 }
 
 Invoke-DoctorCheck -Name "Provider configured" -Check {
-    $configured = Test-CodexProviderConfigured
-    Add-DoctorResult -Name "Provider configured" -Passed $configured -Detail ("Expected provider '{0}' present: {1}" -f $expectedProviderId, $configured)
+    Add-DoctorResult -Name "Provider configured" -Passed $providerConfigured -Detail ("Expected provider '{0}' present: {1}" -f $expectedProviderId, $providerConfigured)
 }
 
 Invoke-DoctorCheck -Name "Default model_provider" -Check {
-    $actualProvider = Get-CodexDefaultProvider
-    $passed = $actualProvider -eq $expectedProviderId
-    $detail = "Expected '{0}', found '{1}'" -f $expectedProviderId, $(if ($actualProvider) { $actualProvider } else { "<unset>" })
+    $passed = $defaultProvider -eq $expectedProviderId
+    $detail = "Expected '{0}', found '{1}'" -f $expectedProviderId, $(if ($defaultProvider) { $defaultProvider } else { "<unset>" })
     Add-DoctorResult -Name "Default model_provider" -Passed $passed -Detail $detail
 }
 
 Invoke-DoctorCheck -Name "Analyzer health" -Check {
-    $healthy = Test-HttpOk -Uri "$Script:AnalyzerBaseUrl/health"
-    Add-DoctorResult -Name "Analyzer health" -Passed $healthy -Detail (Get-HealthSummary -Uri "$Script:AnalyzerBaseUrl/health")
+    $healthy = $analyzerHealth -like "ok:*"
+    Add-DoctorResult -Name "Analyzer health" -Passed $healthy -Detail $analyzerHealth
 }
 
 Invoke-DoctorCheck -Name "Proxy health" -Check {
-    $healthy = Test-HttpOk -Uri "$Script:ProxyBaseUrl/health"
-    Add-DoctorResult -Name "Proxy health" -Passed $healthy -Detail (Get-HealthSummary -Uri "$Script:ProxyBaseUrl/health")
+    $healthy = $proxyHealth -like "ok:*"
+    Add-DoctorResult -Name "Proxy health" -Passed $healthy -Detail $proxyHealth
 }
 
 Invoke-DoctorCheck -Name "Demo proof" -Check {
@@ -79,6 +81,14 @@ Invoke-DoctorCheck -Name "Demo proof" -Check {
 
 Write-Output "LLM CLI Privacy Proxy doctor"
 Write-Output "Proxy base URL: $Script:ProxyBaseUrl"
+Write-Output ""
+Write-Output "Codex login status: $loginStatus"
+Write-Output "Provider configured: $providerConfigured"
+Write-Output "Default model_provider: $(if ($defaultProvider) { $defaultProvider } else { "<unset>" })"
+Write-Output "Analyzer health: $analyzerHealth"
+Write-Output "Proxy health: $proxyHealth"
+Write-Output "Recommended launch:"
+Write-Output "  start the privacy stack, then run codex normally from your repo"
 Write-Output ""
 
 foreach ($result in $results) {
