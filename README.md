@@ -346,6 +346,7 @@ Most users should ignore the wrapper and run plain `codex` after the one-time in
 - Do not rely on `privacy-cache/*.json` as a portable artifact; it is local runtime state.
 - Keep client-specific setup in `docs/integrations/` so the core runtime remains reusable.
 - Prefer `./scripts/package.ps1` when you want a clean handoff artifact instead of a live working folder.
+- For zipped-project startup, send [docs/teammate-handoff.md](./docs/teammate-handoff.md).
 
 ## Naming Note
 
