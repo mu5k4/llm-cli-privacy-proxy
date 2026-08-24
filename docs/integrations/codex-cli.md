@@ -11,6 +11,8 @@ For a user who just needs the working Codex flow:
 3. Start the privacy stack when needed with `./scripts/start.ps1`
 4. Open any repo and run `codex` normally
 
+On Windows, run `./scripts/install.ps1` while the Codex CLI is closed. The helper rewrites `~/.codex/config.toml`, and an active Codex session can cause an `os error 32` config-lock failure.
+
 ```powershell
 cd C:\path\to\your\repo
 codex
@@ -29,6 +31,8 @@ Run:
 ```powershell
 ./scripts/install.ps1
 ```
+
+On Windows, close any running Codex CLI sessions before running this helper so `~/.codex/config.toml` is not locked during the config update.
 
 What the helper does:
 
@@ -88,7 +92,7 @@ Use these checks before real usage:
 ```powershell
 ./scripts/doctor.ps1
 ./scripts/status.ps1
-./scripts/test.ps1
+./scripts/regression.ps1
 ./scripts/codex-status.ps1
 ```
 
@@ -105,6 +109,7 @@ What `./scripts/codex-status.ps1` should show:
 - `codex-status.ps1` shows `Provider configured: False`: rerun `./scripts/install.ps1`.
 - `codex-status.ps1` shows `Default model_provider` other than `privacy`: rerun `./scripts/install.ps1`.
 - `start.ps1` succeeds but Codex still bypasses the proxy: you likely skipped `./scripts/install.ps1`, so Codex was never pointed at the `privacy` provider.
+- `Failed to read config file ... os error 32` during install or uninstall: close any running Codex CLI sessions, then rerun `./scripts/install.ps1` or `./scripts/uninstall.ps1`.
 - `Analyzer health: unreachable` or `Proxy health: unreachable`: run `./scripts/start.ps1`, then rerun `./scripts/codex-status.ps1`.
 - Port collision on the local proxy or analyzer: edit `.env`, change `PROXY_PORT` or `ANALYZER_PORT`, restart the stack, then rerun `./scripts/install.ps1`.
 - `codex` starts but does not appear to use the proxy: run `docker logs -f llm-cli-privacy-proxy` and confirm you see `POST /responses` after sending a Codex prompt.
@@ -160,7 +165,7 @@ This is stronger evidence than raw container logs alone, because the current pro
 
 ## Advanced Wrapper
 
-Most users should ignore this and use plain `codex` after `install.ps1`.
+Most users should ignore this and use plain `codex` after `./scripts/install.ps1`.
 
 Use the wrapper only when you deliberately want an explicit per-run override instead of relying on the installed default provider.
 
