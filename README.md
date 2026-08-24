@@ -76,7 +76,7 @@ Today that means:
   - changes: none
   - depends on: Docker, Codex CLI, PowerShell
 - `scripts/doctor.ps1`
-  - purpose: run the broad readiness check in one command
+  - purpose: run the broad readiness check in one command, including the `codex-status.ps1`-style status summary
   - changes: none
   - depends on: Docker, Codex CLI, PowerShell, healthy stack for the demo-proof step
   - checks: Codex login, provider presence, default provider, analyzer health, proxy health, `demo-proof.ps1`
@@ -133,7 +133,7 @@ If `.env` does not exist, the lifecycle scripts will create it from `.env.exampl
 Use this when you want plain `codex` to route through the proxy by default.
 
 1. Follow [Codex CLI setup](./docs/integrations/codex-cli.md).
-2. Run `./scripts/codex-status.ps1` after install to confirm login, provider configuration, and local health.
+2. Run `./scripts/doctor.ps1` after install for the full readiness check, or `./scripts/codex-status.ps1` for the lighter status-only check.
 
 For deeper validation, run:
 
@@ -220,6 +220,8 @@ This is the clearest single-command check when you want to confirm:
 - the analyzer and proxy are healthy
 - the `/protect` and `/restore` proof still works
 
+It also prints the same high-level status summary as `./scripts/codex-status.ps1` before the structured PASS/FAIL output.
+
 ## Run The Regression Test
 
 ```powershell
@@ -286,7 +288,7 @@ If you also want transport proof, run `docker logs -f llm-cli-privacy-proxy` in 
 - `Default model_provider` is not `privacy`: rerun `./scripts/install.ps1`, then confirm with `./scripts/codex-status.ps1`.
 - `codex-status.ps1` healthy output should show `Provider configured: True`, `Default model_provider: privacy`, `Analyzer health: ok`, and `Proxy health: ok`.
 - `demo-proof.ps1` fails: fix stack health first with `./scripts/start.ps1`, then rerun the proof. If it still fails, use `./scripts/doctor.ps1` for a broader check.
-- `./scripts/doctor.ps1` is the fastest full readiness check because it bundles login, provider, health, and protect/restore proof into one command.
+- `./scripts/doctor.ps1` is the fastest full readiness check because it bundles the `codex-status.ps1`-style status summary, provider checks, health, and protect/restore proof into one command.
 
 ## Stop The Proxy
 
@@ -346,6 +348,7 @@ Most users should ignore the wrapper and run plain `codex` after the one-time in
 - Do not rely on `privacy-cache/*.json` as a portable artifact; it is local runtime state.
 - Keep client-specific setup in `docs/integrations/` so the core runtime remains reusable.
 - Prefer `./scripts/package.ps1` when you want a clean handoff artifact instead of a live working folder.
+- For zipped-project startup, send [docs/teammate-handoff.md](./docs/teammate-handoff.md).
 
 ## Naming Note
 
