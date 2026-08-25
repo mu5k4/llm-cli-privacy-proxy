@@ -1,0 +1,375 @@
+{
+  "completeness": "partial",
+  "deferred": [
+    {
+      "followUp": "After analyzer dependencies are reproducibly pinned, test the exact analyzer implementation with representative long entities around each 4,000-character boundary.",
+      "id": "presidio-long-entity-overlap",
+      "reason": "Source establishes a fixed 256-character overlap without a supported entity-length invariant, but exact recognizer behavior for representative long entities was not executed."
+    },
+    {
+      "followUp": "Use synthetic span tests and then representative credentials embedded in URLs or larger PII spans with the pinned detector versions.",
+      "id": "detector-overlap-cooccurrence",
+      "reason": "The union-loss algorithm is established statically, but concrete co-occurring Nosey Parker and Presidio spans depend on runtime detector/model output."
+    },
+    {
+      "followUp": "Use fake placeholders and fake tools under the real approval policy to identify which restored response fields can cause actions; never use production secrets.",
+      "id": "downstream-restoration-consumers",
+      "reason": "The repository does not define the deployed client's tool execution, URL fetching, logging, or approval behavior."
+    },
+    {
+      "followUp": "Capture schemas only, without real prompt data, and extend outbound-secret regression coverage to every observed supported shape.",
+      "id": "deployed-request-shapes",
+      "reason": "No live sanitized capture establishes which optional Responses fields and structured tool-result shapes deployed clients populate."
+    },
+    {
+      "followUp": "Reconcile the authoritative target inventory without widening scope before claiming an exact reviewed-file count.",
+      "id": "scope-inventory-reconciliation",
+      "reason": "The previous aggregate records a discrepancy between a 29-file explicit inventory and two workers reporting 31 in-scope files; the reducer did not inspect repository code."
+    }
+  ],
+  "documentType": "codex-security.coverage",
+  "excludePaths": [],
+  "explicitExclusions": [],
+  "includePaths": [
+    "."
+  ],
+  "inventoryStrategy": "repository",
+  "mode": "deep_repository",
+  "openQuestions": [
+    {
+      "followUpPrompt": "Run boundary tests against the exact pinned analyzer and preserve both partial and complete detector spans.",
+      "question": "How do the pinned Presidio recognizers behave for entities longer than the 256-character overlap at 4,000-character boundaries?"
+    },
+    {
+      "followUpPrompt": "Add synthetic union tests, then run representative secret-in-URL and identifier-in-PII cases.",
+      "question": "Which concrete detector outputs produce nested or partially overlapping ranges with unique outer sensitive coverage?"
+    },
+    {
+      "followUpPrompt": "Capture sanitized request schemas and add outbound canary tests without collecting real prompts.",
+      "question": "Which optional top-level Responses fields, query parameters, forwarded headers, and structured tool-result shapes are emitted by deployed clients?"
+    },
+    {
+      "followUpPrompt": "Test fake placeholders under the deployed client approval policy.",
+      "question": "Which restored response fields can trigger automatic or approved downstream tools, URL fetches, logs, or exports?"
+    },
+    {
+      "followUpPrompt": "Reconcile the inventory from authoritative scan receipts without inspecting outside the authorized scope.",
+      "question": "Why do prior worker inventory records differ between 29 explicitly listed files and 31 reported in-scope files?"
+    },
+    {
+      "followUpPrompt": "Verify the effective bind without disclosing environment secrets and raise resource-exhaustion severity if the service is network-exposed.",
+      "question": "Has PROXY_BIND_HOST changed from the source default?"
+    }
+  ],
+  "scanId": "c6ab974d-be17-4b27-9346-92e37dc3d56e",
+  "schemaVersion": "1.0",
+  "surfaces": [
+    {
+      "disposition": "reported",
+      "id": "responses-request-anonymization",
+      "label": "Responses body, query, header, schema, traversal, detector dispatch, and outbound serialization\n\nResponses request traversal and outbound anonymization",
+      "notes": "Top-level non-input fields, global nested-key and tools exclusions, unsupported shapes, and forwarded query/nonfiltered-header values were reduced into one complete-outbound-policy finding; deliberate authorization forwarding and administrator-controlled destinations remain explicit counterevidence. Reviewed complete request forwarding, top-level fields, recursive slot collection, skipped keys, skipped subtrees, and fail-closed detector behavior.\n\nTop-level, skipped-key, tools-subtree, non-string, and cross-slot representations were traced to the upstream sink.",
+      "receiptRefs": [],
+      "riskArea": "Confidentiality and anonymization bypass\n\nSensitive data exposure"
+    },
+    {
+      "disposition": "reported",
+      "id": "multipart-detection",
+      "label": "Cross-slot and fixed-overlap detector coverage",
+      "notes": "Cross-slot fragmentation and the long-entity fixed-overlap gap remain separate because canonical seam scanning does not by itself fix incomplete long-entity visibility. Runtime detector behavior remains a prerequisite for concrete examples. Reviewed Presidio per-slot scans, Nosey Parker combined corpus, offset mapping, fixed overlaps, result ownership, and strongest counterevidence.",
+      "receiptRefs": [],
+      "riskArea": "Protection mechanism bypass"
+    },
+    {
+      "disposition": "reported",
+      "id": "detector-span-resolution",
+      "label": "Detector offset mapping, overlap resolution, and replacement coverage",
+      "notes": "Whole-span priority rejection can leave the unique outer portion of an overlapping sensitive range raw; detector co-occurrence was not executed.",
+      "receiptRefs": [],
+      "riskArea": "Partial sensitive-range exposure"
+    },
+    {
+      "disposition": "reported",
+      "id": "response-restoration",
+      "label": "Streaming placeholder restoration and downstream control fields",
+      "notes": "Transport and UTF-8 split handling were reviewed; successful streams are restored without SSE/JSON field classification. Downstream execution remains an external prerequisite. Reviewed UTF-8 chunk handling, token-prefix buffering, JSON escaping, token collision behavior, SSE/JSON context, and request-scoped cleanup.\n\nWhole-stream restoration can place originals into outbound-exempt identifiers.",
+      "receiptRefs": [],
+      "riskArea": "Integrity, output injection, and secondary disclosure\n\nunsafe-output-rewriting"
+    },
+    {
+      "disposition": "reported",
+      "id": "local-service-identity",
+      "label": "Loopback proxy identity, readiness, and OAuth forwarding",
+      "notes": "HTTP 200 readiness does not authenticate the local service that receives OAuth-bearing Codex requests; default loopback exposure and port ownership are prerequisites.",
+      "receiptRefs": [],
+      "riskArea": "Credential and prompt theft"
+    },
+    {
+      "disposition": "reported",
+      "id": "session-confidentiality",
+      "label": "Standalone protect/restore ownership, fixation, lifetime, and guessing",
+      "notes": "Caller-selected known/fixed IDs can cross client boundaries. Blind guessing of server-generated UUIDv4 IDs and internal /responses sessions remains rejected.",
+      "receiptRefs": [],
+      "riskArea": "Broken object authorization and retained plaintext"
+    },
+    {
+      "disposition": "reported",
+      "id": "local-api-resources",
+      "label": "Local admission, body parsing, detector work, subprocesses, sessions, and persistent cache lifecycle",
+      "notes": "Unbounded work, subprocess time, session retention, cache growth, and full cache rewrites are grouped under one resource-invariant failure; default loopback binding lowers severity. Reviewed both /protect and /responses, body and semantic limits, authorization timing, subprocess deadlines, analyzer timeouts, and loopback exposure. Reviewed manual and proxied sessions, cleanup paths, raw mapping retention, cache keys, persistence, and absence of capacity policies.",
+      "receiptRefs": [],
+      "riskArea": "Availability and retained plaintext"
+    },
+    {
+      "disposition": "reported",
+      "id": "cache-invalidation",
+      "label": "Detector cache validity across language, model, recognizer, threshold, configuration, and version changes",
+      "notes": "Persistent text-only keys can reuse old false negatives after a security update.",
+      "receiptRefs": [],
+      "riskArea": "Stale privacy decisions"
+    },
+    {
+      "disposition": "reported",
+      "id": "codex-config",
+      "label": "Codex provider installation, TOML scope, backup/uninstall behavior, and effective-config verification",
+      "notes": "Section-blind model_provider rewriting and doctor checks can leave the effective global provider outside the proxy; array-bound commands and scoped destructive paths produced no separate injection or traversal issue.",
+      "receiptRefs": [],
+      "riskArea": "Privacy routing bypass"
+    },
+    {
+      "disposition": "no_issue_found",
+      "id": "upstream-routing",
+      "label": "Configured upstream/analyzer destinations, redirects, SSRF, smuggling, and credential routing",
+      "notes": "Service destinations are administrator-controlled and the shipped upstream is HTTPS; no request-controlled destination, concrete smuggling path, or separate lower-privilege configuration attacker was established. No request-controlled upstream destination, cross-client OAuth theft, or blind session enumeration was established. Default publication is loopback; broader binding is recorded as a prerequisite where relevant.",
+      "receiptRefs": [],
+      "riskArea": "Request and credential routing"
+    },
+    {
+      "disposition": "reported",
+      "id": "container-dependency-supply-chain",
+      "label": "Container, Python package, detector model, image provenance, privilege, mounts, and raw-data access",
+      "notes": "Mutable latest, unpinned GLiNER, and other tag-only build inputs reach privacy-critical code. Exploitation requires compromised or malicious upstream artifacts. No lower-privilege source-to-sink exploit was established. Mutable analyzer artifacts are a hardening concern, not reported as an exploitable current-state vulnerability without registry or package compromise evidence.",
+      "receiptRefs": [],
+      "riskArea": "Build integrity and raw-prompt confidentiality"
+    },
+    {
+      "disposition": "no_issue_found",
+      "id": "powershell-lifecycle",
+      "label": "PowerShell bootstrap, lifecycle, packaging, filesystem changes, and wrappers",
+      "notes": "Arguments are array-bound or fixed and destructive targets are scoped; configuration scope confusion is separately reported.",
+      "receiptRefs": [],
+      "riskArea": "Command injection, path safety, and destructive operations"
+    },
+    {
+      "disposition": "no_issue_found",
+      "id": "documentation-and-inert-config",
+      "label": "Documentation, integration guidance, demos, regression assertions, and inactive recognizer reference configuration",
+      "notes": "The active analyzer configuration is analyzer-config.yaml; recognizers.yaml is not mounted. Existing tests omit reported adversarial body shapes, seams, overlap unions, and context-aware restoration. No production credential was present. Test tokens are synthetic; packaging excludes .env and runtime cache JSON; documentation preserves the local-only default.",
+      "receiptRefs": [],
+      "riskArea": "Operational assumptions and preventive controls"
+    },
+    {
+      "disposition": "not_applicable",
+      "id": "conventional-web-vulnerabilities",
+      "label": "SQL/NoSQL injection, XSS, SSRF, XXE, uploads, unsafe deserialization, traversal, command injection, and memory safety",
+      "notes": "No applicable in-scope sink was established; Nosey Parker input uses stdin and command arguments are arrays. Nosey Parker uses a fixed argv and stdin without a shell; no path traversal, unsafe deserialization, request-smuggling, or response-splitting path was established.",
+      "receiptRefs": [],
+      "riskArea": "Common application vulnerability classes"
+    },
+    {
+      "disposition": "no_issue_found",
+      "id": "fail-closed-and-cleanup",
+      "label": "Detector failure handling, upstream errors, response cleanup, and internal session deletion",
+      "notes": "Covered input detector failures return 503 before send, upstream errors are not restored, and internal /responses sessions are normally removed on terminal paths.",
+      "receiptRefs": [],
+      "riskArea": "Preventive controls"
+    },
+    {
+      "disposition": "reported",
+      "id": "responses-envelope",
+      "label": "Responses request envelope and outbound privacy boundary",
+      "notes": "Reviewed parsing, field selection, header forwarding, fail-closed behavior, and upstream serialization.",
+      "receiptRefs": [],
+      "riskArea": "Sensitive-data exposure"
+    },
+    {
+      "disposition": "reported",
+      "id": "nested-input-and-media",
+      "label": "Nested input traversal, skipped keys, tools, media, and opaque content",
+      "receiptRefs": [],
+      "riskArea": "Anonymization coverage"
+    },
+    {
+      "disposition": "reported",
+      "id": "detector-boundaries",
+      "label": "Nosey Parker and Presidio span mapping, chunking, language, caching, and overlap resolution",
+      "receiptRefs": [],
+      "riskArea": "Detection completeness"
+    },
+    {
+      "disposition": "reported",
+      "id": "placeholder-restoration",
+      "label": "Placeholder generation and streaming/non-streaming restoration",
+      "receiptRefs": [],
+      "riskArea": "Response integrity and secret replay"
+    },
+    {
+      "disposition": "reported",
+      "id": "sessions-and-manual-api",
+      "label": "Protect/restore session ownership, secrecy, cleanup, and lifecycle",
+      "receiptRefs": [],
+      "riskArea": "State retention and availability"
+    },
+    {
+      "disposition": "reported",
+      "id": "resource-governance",
+      "label": "Request sizes, detector concurrency, subprocess timeouts, persistent cache, and streaming\n\nRequest, scanner, session, cache, and persistence resource governance",
+      "notes": "Both manual and proxied paths were reviewed and combined under one missing-budget control.",
+      "receiptRefs": [],
+      "riskArea": "Denial of service\n\nAvailability"
+    },
+    {
+      "disposition": "no_issue_found",
+      "id": "network-and-credentials",
+      "label": "Loopback publication, upstream routing, forwarded authorization, and response headers",
+      "notes": "Defaults use loopback and the expected HTTPS upstream. Operator-controlled endpoint changes were treated as privileged configuration rather than standalone remote vulnerabilities.",
+      "receiptRefs": [],
+      "riskArea": "Credential routing"
+    },
+    {
+      "disposition": "no_issue_found",
+      "id": "installer-and-config",
+      "label": "PowerShell installation, Codex config mutation, command execution, packaging, and deletion",
+      "notes": "No attacker-controlled shell interpolation, unsafe broad deletion, or independent privilege-boundary violation was established.",
+      "receiptRefs": [],
+      "riskArea": "Local code execution and configuration integrity"
+    },
+    {
+      "disposition": "reported",
+      "id": "container-and-supply-chain",
+      "label": "Container privileges, images, Python packages, model references, volumes, and health checks",
+      "receiptRefs": [],
+      "riskArea": "Supply-chain integrity"
+    },
+    {
+      "disposition": "no_issue_found",
+      "id": "documentation-and-tests",
+      "label": "README, integration guides, recognizer reference, and regression coverage",
+      "notes": "Documentation confirms text anonymization intent, default loopback binding, and synthetic test credentials; tests omit the reported bypass cases.",
+      "receiptRefs": [],
+      "riskArea": "Security expectations and counterevidence"
+    },
+    {
+      "disposition": "reported",
+      "id": "responses-stream-restoration",
+      "label": "Streaming placeholder restoration and downstream active fields",
+      "notes": "Raw response replacement reaches all protocol fields; JSON escaping and downstream approval were assessed as countercontrols.",
+      "receiptRefs": [],
+      "riskArea": "Secret injection"
+    },
+    {
+      "disposition": "reported",
+      "id": "local-provider-authentication",
+      "label": "Codex provider credential channel and local endpoint identity",
+      "notes": "Default loopback constraints and port-ownership prerequisites were included in severity.",
+      "receiptRefs": [],
+      "riskArea": "Credential theft"
+    },
+    {
+      "disposition": "rejected",
+      "id": "detector-span-processing",
+      "label": "Detector overlap, chunking, UTF-8 offsets, and language handling",
+      "notes": "Cross-slot mapping was reported separately. A larger overlapping-span remainder and spans longer than the configured overlap are plausible, but exact external detector outputs were not established from current source.",
+      "receiptRefs": [],
+      "riskArea": "Sensitive data exposure"
+    },
+    {
+      "disposition": "no_issue_found",
+      "id": "manual-session-confidentiality",
+      "label": "Manual protect/restore session confidentiality and ownership",
+      "notes": "UUIDv4 prevents blind guessing; caller-selected identifiers and unauthenticated restore remain hardening concerns without a source-backed path for forcing a victim to use a known identifier.",
+      "receiptRefs": [],
+      "riskArea": "Broken access control"
+    },
+    {
+      "disposition": "no_issue_found",
+      "id": "installer-config-scripts",
+      "label": "PowerShell command invocation, environment parsing, TOML mutation, project trust, and lifecycle cleanup",
+      "notes": "No command injection or new privilege boundary was established. Config writes are backed up but non-atomic.",
+      "receiptRefs": [],
+      "riskArea": "Local privilege and configuration integrity"
+    },
+    {
+      "disposition": "reported",
+      "id": "container-dependency-integrity",
+      "label": "Container image, Python dependency, and model provenance\n\nContainer and dependency supply-chain integrity",
+      "notes": "Mutable latest and unpinned analyzer dependencies are material hardening gaps, but no current malicious artifact or compromised publisher was established and that attacker was outside the supplied context.\n\nAnalyzer image and gliner dependency are mutable.",
+      "receiptRefs": [],
+      "riskArea": "Supply chain\n\nsupply-chain-integrity"
+    },
+    {
+      "disposition": "no_issue_found",
+      "id": "documentation-tests-packaging",
+      "label": "Documentation, regression coverage, examples, packaging, and ignored runtime state",
+      "notes": "Existing tests do not cover retained anonymization findings, but no separate vulnerability was found in packaging or documentation behavior.",
+      "receiptRefs": [],
+      "riskArea": "Operational safety"
+    },
+    {
+      "disposition": "reported",
+      "id": "responses-request-privacy-boundary",
+      "label": "Responses request field classification and anonymization",
+      "notes": "Top-level and exempt-key bypasses validated.",
+      "receiptRefs": [],
+      "riskArea": "sensitive-data-exposure"
+    },
+    {
+      "disposition": "reported",
+      "id": "detector-segmentation-and-ranges",
+      "label": "Detector slot, chunk, offset, and overlap handling",
+      "notes": "Cross-slot, overlap-union, and boundary gaps validated with prerequisites.",
+      "receiptRefs": [],
+      "riskArea": "privacy-filter-bypass"
+    },
+    {
+      "disposition": "reported",
+      "id": "session-cache-and-resource-lifecycle",
+      "label": "Session, cache, request, and detector resource lifecycle",
+      "notes": "Default exposure is loopback; severity was downgraded.",
+      "receiptRefs": [],
+      "riskArea": "resource-exhaustion"
+    },
+    {
+      "disposition": "no_issue_found",
+      "id": "network-routing-and-header-forwarding",
+      "label": "Network routing, header forwarding, and SSRF boundaries",
+      "notes": "Destinations are configuration-controlled and default ports bind loopback.",
+      "receiptRefs": [],
+      "riskArea": "network-security"
+    },
+    {
+      "disposition": "no_issue_found",
+      "id": "installer-and-codex-config-lifecycle",
+      "label": "PowerShell installer, packaging, and Codex configuration lifecycle",
+      "notes": "No attacker-controlled command or path reached execution.",
+      "receiptRefs": [],
+      "riskArea": "local-code-execution"
+    },
+    {
+      "disposition": "not_applicable",
+      "id": "parsing-storage-and-web-classes",
+      "label": "Injection, upload, database, deserialization, browser, and memory-safety classes",
+      "notes": "No applicable database, upload, HTML, unsafe-deserialization, native-memory, or request-controlled filesystem sink.",
+      "receiptRefs": [],
+      "riskArea": "general-application-security"
+    },
+    {
+      "disposition": "no_issue_found",
+      "id": "documentation-tests-and-packaging",
+      "label": "Documentation, regression tests, examples, and packaging",
+      "notes": "Tests omit the reported bypass variants.",
+      "receiptRefs": [],
+      "riskArea": "assurance"
+    }
+  ]
+}
