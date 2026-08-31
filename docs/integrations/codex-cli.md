@@ -50,13 +50,14 @@ The helper configures this provider:
 ```toml
 [model_providers.privacy]
 name = "Local Privacy Proxy"
-base_url = "http://127.0.0.1:8000"
+base_url = "http://127.0.0.1:8000/local/<redacted>"
 wire_api = "responses"
 requires_openai_auth = true
 supports_websockets = false
 ```
 
 If you changed `CODEX_PROVIDER_ID`, `PRIVACY_PROVIDER_NAME`, or `PROXY_PORT` in `.env`, the installed provider block will follow those values.
+The actual installed `base_url` also includes an auto-generated local auth path secret from `.env`.
 
 Important distinction:
 
@@ -142,7 +143,7 @@ $body = @{
   language = "en"
 } | ConvertTo-Json
 
-Invoke-RestMethod -Uri "http://127.0.0.1:8000/protect" -Method Post -ContentType "application/json" -Body $body
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/local/<redacted>/protect" -Method Post -ContentType "application/json" -Body $body
 ```
 
 What to show:

@@ -5,9 +5,6 @@ Assert-Command -Name "codex" -DisplayName "Codex CLI"
 
 Ensure-ProjectDirectories
 
-$configPlan = Get-CodexInstallConfigPlan
-$configBackupPath = Save-CodexInstallConfigPlan -Plan $configPlan
-
 if (Test-PrivacyStackHealthy) {
     Write-Output "Privacy stack already healthy; skipping rebuild and restart."
 } else {
@@ -15,13 +12,16 @@ if (Test-PrivacyStackHealthy) {
     Invoke-Compose @("up", "-d")
 
     Wait-HttpOk -Uri "$Script:AnalyzerBaseUrl/health"
-    Wait-HttpOk -Uri "$Script:ProxyBaseUrl/health"
+    Wait-HttpOk -Uri $Script:ProxyHealthUrl
 }
 
 & (Join-Path $PSScriptRoot "regression.ps1")
 if ($LASTEXITCODE -ne 0) {
     throw "Smoke test failed."
 }
+
+$configPlan = Get-CodexInstallConfigPlan
+$configBackupPath = Save-CodexInstallConfigPlan -Plan $configPlan
 
 if ($configBackupPath) {
     Write-Output "Backed up Codex config to $configBackupPath"

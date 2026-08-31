@@ -6,7 +6,7 @@ Ensure-ProjectDirectories
 
 Write-Output "Bootstrap complete."
 Write-Output "Environment file: $Script:EnvPath"
-Write-Output "Proxy URL: $Script:ProxyBaseUrl"
+Write-Output "Proxy URL: $Script:ProxyDisplayBaseUrl"
 Write-Output "Analyzer URL: $Script:AnalyzerBaseUrl"
 Write-Output "Next steps:"
 Write-Output "  1. Review $Script:EnvPath if you need custom ports or upstream settings."

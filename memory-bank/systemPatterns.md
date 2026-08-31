@@ -24,4 +24,4 @@
 - Scripts handle setup, start, stop, uninstall, and packaging.
 - Validation scripts cover smoke checks, doctor/readiness checks, demo proof, and regression testing.
 - Shareable artifacts exclude machine-specific runtime state.
-- Audit findings in .audit/ now feed directly into implementation planning and regression coverage.
+- Audit-derived remediation results now live in the main memory-bank files and regression coverage, not in a separate active audit-artifact folder.

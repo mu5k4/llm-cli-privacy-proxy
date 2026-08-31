@@ -1,5 +1,6 @@
 .env
 dist/
 privacy-cache/*.json
+privacy-cache/presidio-model-cache/
 privacy-service/__pycache__/
 *.bak

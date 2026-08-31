@@ -14,6 +14,6 @@ if (-not $NoBuild) {
 Invoke-Compose @("up", "-d")
 
 Wait-HttpOk -Uri "$Script:AnalyzerBaseUrl/health"
-Wait-HttpOk -Uri "$Script:ProxyBaseUrl/health"
+Wait-HttpOk -Uri $Script:ProxyHealthUrl
 
 Write-Output "Privacy stack is healthy."
