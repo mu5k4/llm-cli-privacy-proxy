@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools >= 77.0.3"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "llm-cli-privacy-proxy"
+version = "0.1.0"
+description = "Local privacy proxy for coding assistants and other LLM CLIs."
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+privacy-service = [
+  "fastapi == 0.141.1",
+  "httpx == 0.28.1",
+  "pydantic == 2.13.4",
+  "uvicorn[standard] == 0.52.4",
+]
+analyzer = [
+  "gliner == 0.2.28",
+  "huggingface_hub == 1.28.0",
+]
+
+[tool.llm_cli_privacy_proxy.lockfiles]
+privacy_service = "privacy-service.lock"
+analyzer = "analyzer.lock"

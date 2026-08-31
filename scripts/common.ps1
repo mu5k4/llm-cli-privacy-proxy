@@ -8,6 +8,17 @@ $Script:EnvPath = Join-Path $Script:ProjectRoot ".env"
 $Script:CodexConfigDir = Join-Path $HOME ".codex"
 $Script:CodexConfigPath = Join-Path $Script:CodexConfigDir "config.toml"
 
+function New-LocalAuthToken {
+    $bytes = New-Object byte[] 24
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try {
+        $rng.GetBytes($bytes)
+    } finally {
+        $rng.Dispose()
+    }
+    return (($bytes | ForEach-Object { $_.ToString("x2") }) -join "")
+}
+
 function Get-ProjectConfig {
     if (-not (Test-Path $Script:EnvExamplePath)) {
         throw "Expected example environment file at $Script:EnvExamplePath"
@@ -50,9 +61,25 @@ function Get-ProjectConfig {
     return $values
 }
 
-$Script:ProjectConfig = Get-ProjectConfig
-$Script:ProxyBaseUrl = "http://{0}:{1}" -f $Script:ProjectConfig["PROXY_BIND_HOST"], $Script:ProjectConfig["PROXY_PORT"]
-$Script:AnalyzerBaseUrl = "http://{0}:{1}" -f $Script:ProjectConfig["PROXY_BIND_HOST"], $Script:ProjectConfig["ANALYZER_PORT"]
+function Initialize-ProjectConfig {
+    $Script:ProjectConfig = Get-ProjectConfig
+    $Script:ProxyTransportBaseUrl = "http://{0}:{1}" -f $Script:ProjectConfig["PROXY_BIND_HOST"], $Script:ProjectConfig["PROXY_PORT"]
+    $Script:PublicProxyBaseUrl = $Script:ProxyTransportBaseUrl
+    $Script:AnalyzerBaseUrl = "http://{0}:{1}" -f $Script:ProjectConfig["PROXY_BIND_HOST"], $Script:ProjectConfig["ANALYZER_PORT"]
+    $localAuthToken = $Script:ProjectConfig["LOCAL_AUTH_TOKEN"]
+
+    if ([string]::IsNullOrWhiteSpace($localAuthToken)) {
+        $Script:ProxyPathPrefix = "/local/__missing_local_auth_token__"
+    } else {
+        $Script:ProxyPathPrefix = "/local/$localAuthToken"
+    }
+
+    $Script:ProxyBaseUrl = $Script:ProxyTransportBaseUrl + $Script:ProxyPathPrefix
+    $Script:ProxyDisplayBaseUrl = $Script:ProxyTransportBaseUrl + "/local/<redacted>"
+    $Script:ProxyHealthUrl = $Script:ProxyBaseUrl + "/health"
+}
+
+Initialize-ProjectConfig
 
 function New-CodexConfigBackup {
     param(
@@ -70,6 +97,60 @@ function New-CodexConfigBackup {
     return $backupPath
 }
 
+function Get-CodexConfigContent {
+    if (-not (Test-Path $Script:CodexConfigPath)) {
+        return ""
+    }
+
+    return (Get-Content -Raw $Script:CodexConfigPath)
+}
+
+function Write-Utf8NoBomFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path,
+        [Parameter(Mandatory = $true)]
+        [AllowEmptyString()]
+        [string]$Content
+    )
+
+    $encoding = New-Object System.Text.UTF8Encoding($false)
+    [System.IO.File]::WriteAllText($Path, $Content, $encoding)
+}
+
+function Test-TomlContentValid {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    if (-not (Get-Command python -ErrorAction SilentlyContinue)) {
+        throw "Python was not found on PATH. A real TOML parser is required for safe Codex config edits."
+    }
+
+    $code = @"
+import pathlib
+import tomllib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+with path.open("rb") as handle:
+    tomllib.load(handle)
+"@
+
+    $scriptPath = Join-Path $env:TEMP "codex-toml-validate.py"
+    Write-Utf8NoBomFile -Path $scriptPath -Content $code
+
+    try {
+        & python $scriptPath $Path
+        if ($LASTEXITCODE -ne 0) {
+            throw "TOML validation failed for $Path"
+        }
+    } finally {
+        Remove-Item -LiteralPath $scriptPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
 function Set-CodexConfigContent {
     param(
         [Parameter(Mandatory = $true)]
@@ -77,6 +158,10 @@ function Set-CodexConfigContent {
         [Parameter(Mandatory = $true)]
         [string]$BackupSuffix
     )
+
+    if (-not (Test-Path $Script:CodexConfigDir)) {
+        New-Item -ItemType Directory -Force -Path $Script:CodexConfigDir | Out-Null
+    }
 
     $backupPath = New-CodexConfigBackup -Suffix $BackupSuffix
     $trimmed = $Content.TrimEnd()
@@ -86,88 +171,278 @@ function Set-CodexConfigContent {
         ""
     }
 
-    Set-Content -Path $Script:CodexConfigPath -Value $finalContent -Encoding UTF8
+    $tempPath = "$Script:CodexConfigPath.tmp"
+    Write-Utf8NoBomFile -Path $tempPath -Content $finalContent
+
+    try {
+        Test-TomlContentValid -Path $tempPath
+        Move-Item -LiteralPath $tempPath -Destination $Script:CodexConfigPath -Force
+    } catch {
+        Remove-Item -LiteralPath $tempPath -Force -ErrorAction SilentlyContinue
+        throw
+    }
+
     return $backupPath
 }
 
-function Get-CodexConfigContent {
-    if (-not (Test-Path $Script:CodexConfigPath)) {
-        return ""
-    }
-
-    return (Get-Content -Raw $Script:CodexConfigPath)
-}
-
-function Remove-TomlSectionsByHeader {
+function Get-CodexConfigDocument {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$Content,
+        [string]$Content
+    )
+
+    $lines = [regex]::Split($Content, "\r?\n")
+    $blocks = New-Object System.Collections.Generic.List[object]
+    $currentHeader = $null
+    $currentLines = New-Object System.Collections.Generic.List[string]
+
+    foreach ($line in $lines) {
+        if ($line -match '^\[[^\[].*\]\s*$') {
+            $blocks.Add([pscustomobject]@{
+                Header = $currentHeader
+                Lines = $currentLines.ToArray()
+            })
+            $currentHeader = $line.Trim()
+            $currentLines = New-Object System.Collections.Generic.List[string]
+            $currentLines.Add($line)
+            continue
+        }
+
+        $currentLines.Add($line)
+    }
+
+    $blocks.Add([pscustomobject]@{
+        Header = $currentHeader
+        Lines = $currentLines.ToArray()
+    })
+
+    return ,($blocks.ToArray())
+}
+
+function Get-CodexConfigText {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object[]]$Document
+    )
+
+    $segments = New-Object System.Collections.Generic.List[string]
+
+    foreach ($block in $Document) {
+        $segment = (($block.Lines | ForEach-Object { $_ }) -join [Environment]::NewLine).TrimEnd()
+        if ($segment) {
+            $segments.Add($segment)
+        }
+    }
+
+    return ($segments -join ([Environment]::NewLine + [Environment]::NewLine))
+}
+
+function Find-CodexConfigBlockIndex {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object[]]$Document,
+        [Parameter(Mandatory = $true)]
+        [string]$Header
+    )
+
+    for ($index = 0; $index -lt $Document.Count; $index++) {
+        if ($Document[$index].Header -eq $Header) {
+            return $index
+        }
+    }
+
+    return -1
+}
+
+function New-CodexConfigBlock {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Header,
+        [Parameter(Mandatory = $true)]
+        [string[]]$BodyLines
+    )
+
+    $lines = New-Object System.Collections.Generic.List[string]
+    $lines.Add($Header)
+    foreach ($line in $BodyLines) {
+        $lines.Add($line)
+    }
+
+    return [pscustomobject]@{
+        Header = $Header
+        Lines = $lines.ToArray()
+    }
+}
+
+function Set-CodexConfigBlock {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object[]]$Document,
+        [Parameter(Mandatory = $true)]
+        [string]$Header,
+        [Parameter(Mandatory = $true)]
+        [string[]]$BodyLines
+    )
+
+    $index = Find-CodexConfigBlockIndex -Document $Document -Header $Header
+    $block = New-CodexConfigBlock -Header $Header -BodyLines $BodyLines
+    $result = New-Object System.Collections.Generic.List[object]
+
+    if ($index -ge 0) {
+        for ($i = 0; $i -lt $Document.Count; $i++) {
+            if ($i -eq $index) {
+                $result.Add($block)
+            } else {
+                $result.Add($Document[$i])
+            }
+        }
+        return ,($result.ToArray())
+    }
+
+    foreach ($item in $Document) {
+        $result.Add($item)
+    }
+    $result.Add($block)
+    return ,($result.ToArray())
+}
+
+function Remove-CodexConfigBlocks {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object[]]$Document,
         [Parameter(Mandatory = $true)]
         [string[]]$Headers
     )
 
-    $lines = [regex]::Split($Content, "\r?\n")
-    $result = New-Object System.Collections.Generic.List[string]
-    $skipSection = $false
+    $result = New-Object System.Collections.Generic.List[object]
 
-    foreach ($line in $lines) {
-        if ($skipSection) {
-            if ($line -match '^\[') {
-                $skipSection = $false
-            } else {
-                continue
-            }
-        }
-
-        if ($Headers -contains $line.Trim()) {
-            $skipSection = $true
+    foreach ($block in $Document) {
+        if ($null -ne $block.Header -and $Headers -contains $block.Header) {
             continue
         }
 
-        $result.Add($line)
+        $result.Add($block)
     }
 
-    return ($result -join [Environment]::NewLine)
+    return ,($result.ToArray())
 }
 
-function Add-TomlSection {
+function Get-CodexConfigRootLines {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$Content,
-        [Parameter(Mandatory = $true)]
-        [string]$Section
+        [object[]]$Document
     )
 
-    $trimmed = $Content.TrimEnd()
-    if (-not $trimmed) {
-        return ($Section.TrimEnd() + [Environment]::NewLine)
+    foreach ($block in $Document) {
+        if ($null -eq $block.Header) {
+            return ,([string[]]$block.Lines)
+        }
     }
 
-    return ($trimmed + [Environment]::NewLine + [Environment]::NewLine + $Section.TrimEnd() + [Environment]::NewLine)
+    return ,([string[]]@())
 }
 
-function Set-CodexDefaultProviderInContent {
+function Set-CodexConfigRootLines {
     param(
         [Parameter(Mandatory = $true)]
-        [string]$Content,
+        [object[]]$Document,
         [Parameter(Mandatory = $true)]
-        [string]$ProviderId
+        [AllowEmptyString()]
+        [string[]]$Lines
     )
 
-    if ($Content -match '(?m)^model_provider\s*=') {
-        return [regex]::Replace(
-            $Content,
-            '(?m)^model_provider\s*=.*$',
-            "model_provider = `"$ProviderId`""
+    $result = New-Object System.Collections.Generic.List[object]
+    $replaced = $false
+
+    foreach ($block in $Document) {
+        if ($null -eq $block.Header) {
+            $result.Add([pscustomobject]@{
+                Header = $null
+                Lines = [string[]]$Lines
+            })
+            $replaced = $true
+            continue
+        }
+
+        $result.Add($block)
+    }
+
+    if (-not $replaced) {
+        $result.Insert(0, [pscustomobject]@{
+            Header = $null
+            Lines = [string[]]$Lines
+        })
+    }
+
+    return ,($result.ToArray())
+}
+
+function Set-CodexRootStringKey {
+    param(
+        [Parameter(Mandatory = $true)]
+        [object[]]$Document,
+        [Parameter(Mandatory = $true)]
+        [string]$Key,
+        [Parameter(Mandatory = $true)]
+        [string]$Value
+    )
+
+    $rootLines = New-Object System.Collections.Generic.List[string]
+    foreach ($line in (Get-CodexConfigRootLines -Document $Document)) {
+        $rootLines.Add($line)
+    }
+
+    $pattern = '^\s*' + [regex]::Escape($Key) + '\s*='
+    $updated = $false
+
+    for ($index = 0; $index -lt $rootLines.Count; $index++) {
+        if ($rootLines[$index] -match $pattern) {
+            $rootLines[$index] = "$Key = `"$Value`""
+            $updated = $true
+            break
+        }
+    }
+
+    if (-not $updated) {
+        while ($rootLines.Count -gt 0 -and [string]::IsNullOrWhiteSpace($rootLines[$rootLines.Count - 1])) {
+            $rootLines.RemoveAt($rootLines.Count - 1)
+        }
+        $rootLines.Add("$Key = `"$Value`"")
+    }
+
+    return (Set-CodexConfigRootLines -Document $Document -Lines $rootLines.ToArray())
+}
+
+function Get-CodexProviderBlock {
+    $providerId = $Script:ProjectConfig["CODEX_PROVIDER_ID"]
+    $providerName = $Script:ProjectConfig["PRIVACY_PROVIDER_NAME"]
+
+    return @{
+        Header = "[model_providers.$providerId]"
+        BodyLines = @(
+            "name = `"$providerName`"",
+            "base_url = `"$Script:ProxyBaseUrl`"",
+            "wire_api = `"responses`"",
+            "requires_openai_auth = true",
+            "supports_websockets = false"
         )
     }
+}
 
-    $trimmed = $Content.TrimEnd()
-    if (-not $trimmed) {
-        return ("model_provider = `"$ProviderId`"" + [Environment]::NewLine)
+function Get-CodexProjectTrustBlock {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$ProjectPath
+    )
+
+    $normalizedPath = $ProjectPath.ToLowerInvariant().Replace("\", "\\")
+
+    return @{
+        Header = "[projects.'$normalizedPath']"
+        BodyLines = @(
+            "trust_level = `"trusted`""
+        )
     }
-
-    return ($trimmed + [Environment]::NewLine + "model_provider = `"$ProviderId`"" + [Environment]::NewLine)
 }
 
 function Assert-Command {
@@ -203,6 +478,28 @@ function Ensure-ProjectDirectories {
     if (-not (Test-Path $Script:EnvPath)) {
         Copy-Item -LiteralPath $Script:EnvExamplePath -Destination $Script:EnvPath
     }
+
+    $envLines = @()
+    if (Test-Path $Script:EnvPath) {
+        $envLines = @(Get-Content -LiteralPath $Script:EnvPath)
+    }
+
+    $hasLocalAuthToken = $false
+    foreach ($line in $envLines) {
+        $trimmed = $line.Trim()
+        if ($trimmed -match '^LOCAL_AUTH_TOKEN\s*=\s*\S+') {
+            $hasLocalAuthToken = $true
+            break
+        }
+    }
+
+    if (-not $hasLocalAuthToken) {
+        $generatedToken = New-LocalAuthToken
+        Add-Content -LiteralPath $Script:EnvPath -Value ""
+        Add-Content -LiteralPath $Script:EnvPath -Value "LOCAL_AUTH_TOKEN=$generatedToken"
+    }
+
+    Initialize-ProjectConfig
 }
 
 function Wait-HttpOk {
@@ -258,93 +555,23 @@ function Test-HttpOk {
 }
 
 function Test-PrivacyStackHealthy {
-    return ((Test-HttpOk -Uri "$Script:AnalyzerBaseUrl/health") -and (Test-HttpOk -Uri "$Script:ProxyBaseUrl/health"))
+    return ((Test-HttpOk -Uri "$Script:AnalyzerBaseUrl/health") -and (Test-HttpOk -Uri $Script:ProxyHealthUrl))
 }
 
 function Ensure-CodexProviderConfig {
-    if (-not (Test-Path $Script:CodexConfigDir)) {
-        New-Item -ItemType Directory -Force -Path $Script:CodexConfigDir | Out-Null
-    }
-
-    $providerId = $Script:ProjectConfig["CODEX_PROVIDER_ID"]
-    $providerName = $Script:ProjectConfig["PRIVACY_PROVIDER_NAME"]
-
-    $providerBlock = @"
-[model_providers.$providerId]
-name = "$providerName"
-base_url = "$Script:ProxyBaseUrl"
-wire_api = "responses"
-requires_openai_auth = true
-supports_websockets = false
-"@
-
-    if (-not (Test-Path $Script:CodexConfigPath)) {
-        Set-Content -Path $Script:CodexConfigPath -Value ($providerBlock + [Environment]::NewLine) -Encoding UTF8
-        return @{
-            Changed = $true
-            BackupPath = $null
-        }
-    }
-
-    $content = Get-Content -Raw $Script:CodexConfigPath
-    $providerPattern = '^\[model_providers\.' + [regex]::Escape($providerId) + '\]\r?$'
-    if ($content -match "(?m)$providerPattern") {
-        return @{
-            Changed = $false
-            BackupPath = $null
-        }
-    }
-
-    $trimmed = $content.TrimEnd()
-    $updated = $trimmed + [Environment]::NewLine + [Environment]::NewLine + $providerBlock + [Environment]::NewLine
-    $backupPath = Set-CodexConfigContent -Content $updated -BackupSuffix "provider"
-
+    $plan = Get-CodexInstallConfigPlan
+    $backupPath = Save-CodexInstallConfigPlan -Plan $plan
     return @{
-        Changed = $true
+        Changed = $plan.ProviderChanged
         BackupPath = $backupPath
     }
 }
 
 function Ensure-CodexDefaultProvider {
-    $providerId = $Script:ProjectConfig["CODEX_PROVIDER_ID"]
-
-    if (-not (Test-Path $Script:CodexConfigDir)) {
-        New-Item -ItemType Directory -Force -Path $Script:CodexConfigDir | Out-Null
-    }
-
-    if (-not (Test-Path $Script:CodexConfigPath)) {
-        Set-Content -Path $Script:CodexConfigPath -Value ("model_provider = `"$providerId`"" + [Environment]::NewLine) -Encoding UTF8
-        return @{
-            Changed = $true
-            BackupPath = $null
-        }
-    }
-
-    $content = Get-Content -Raw $Script:CodexConfigPath
-    $updated = $content
-
-    if ($content -match '(?m)^model_provider\s*=') {
-        $updated = [regex]::Replace(
-            $content,
-            '(?m)^model_provider\s*=.*$',
-            "model_provider = `"$providerId`""
-        )
-    } else {
-        $trimmed = $content.TrimEnd()
-        $updated = $trimmed + [Environment]::NewLine + "model_provider = `"$providerId`"" + [Environment]::NewLine
-    }
-
-    if ($updated -eq $content) {
-        return @{
-            Changed = $false
-            BackupPath = $null
-        }
-    }
-
-    $backupPath = Set-CodexConfigContent -Content $updated -BackupSuffix "default-provider"
-
+    $plan = Get-CodexInstallConfigPlan
+    $backupPath = Save-CodexInstallConfigPlan -Plan $plan
     return @{
-        Changed = $true
+        Changed = $plan.DefaultProviderChanged
         BackupPath = $backupPath
     }
 }
@@ -354,67 +581,19 @@ function Ensure-CodexProjectTrust {
         [string]$ProjectPath = $Script:ProjectRoot
     )
 
-    if (-not (Test-Path $Script:CodexConfigDir)) {
-        New-Item -ItemType Directory -Force -Path $Script:CodexConfigDir | Out-Null
-    }
-
-    $normalizedPath = $ProjectPath.ToLowerInvariant().Replace("\", "\\")
-    $projectBlock = @"
-[projects.'$normalizedPath']
-trust_level = "trusted"
-"@
-
-    if (-not (Test-Path $Script:CodexConfigPath)) {
-        Set-Content -Path $Script:CodexConfigPath -Value ($projectBlock + [Environment]::NewLine) -Encoding UTF8
-        return @{
-            Changed = $true
-            BackupPath = $null
-        }
-    }
-
-    $content = Get-Content -Raw $Script:CodexConfigPath
-    $projectPattern = '^\[projects\.' + [regex]::Escape("'" + $normalizedPath + "'") + '\]\r?$'
-    if ($content -match "(?m)$projectPattern") {
-        return @{
-            Changed = $false
-            BackupPath = $null
-        }
-    }
-
-    $trimmed = $content.TrimEnd()
-    $updated = $trimmed + [Environment]::NewLine + [Environment]::NewLine + $projectBlock + [Environment]::NewLine
-    $backupPath = Set-CodexConfigContent -Content $updated -BackupSuffix "project-trust"
-
+    $plan = Get-CodexInstallConfigPlan
+    $backupPath = Save-CodexInstallConfigPlan -Plan $plan
     return @{
-        Changed = $true
+        Changed = $plan.TrustChanged
         BackupPath = $backupPath
     }
 }
 
 function Remove-CodexProviderConfig {
-    $providerId = $Script:ProjectConfig["CODEX_PROVIDER_ID"]
-
-    if (-not (Test-Path $Script:CodexConfigPath)) {
-        return @{
-            Changed = $false
-            BackupPath = $null
-        }
-    }
-
-    $content = Get-Content -Raw $Script:CodexConfigPath
-    $header = "[model_providers.$providerId]"
-    $updated = Remove-TomlSectionsByHeader -Content $content -Headers @($header)
-
-    if ($updated -eq $content) {
-        return @{
-            Changed = $false
-            BackupPath = $null
-        }
-    }
-
-    $backupPath = Set-CodexConfigContent -Content $updated -BackupSuffix "remove-provider"
+    $plan = Get-CodexUninstallConfigPlan
+    $backupPath = Save-CodexUninstallConfigPlan -Plan $plan
     return @{
-        Changed = $true
+        Changed = $plan.ProviderChanged
         BackupPath = $backupPath
     }
 }
@@ -433,7 +612,6 @@ function Restore-CodexDefaultProvider {
         }
     }
 
-    $content = Get-Content -Raw $Script:CodexConfigPath
     $current = Get-CodexDefaultProvider
 
     if ($current -ne $ProviderId) {
@@ -444,23 +622,10 @@ function Restore-CodexDefaultProvider {
         }
     }
 
-    $updated = [regex]::Replace(
-        $content,
-        '(?m)^model_provider\s*=.*$',
-        "model_provider = `"$FallbackProvider`""
-    )
-
-    if ($updated -eq $content) {
-        return @{
-            Changed = $false
-            BackupPath = $null
-            PreviousValue = $current
-        }
-    }
-
-    $backupPath = Set-CodexConfigContent -Content $updated -BackupSuffix "restore-default-provider"
+    $plan = Get-CodexUninstallConfigPlan -FallbackProvider $FallbackProvider
+    $backupPath = Save-CodexUninstallConfigPlan -Plan $plan
     return @{
-        Changed = $true
+        Changed = $plan.DefaultProviderChanged
         BackupPath = $backupPath
         PreviousValue = $current
     }
@@ -478,25 +643,10 @@ function Remove-CodexProjectTrust {
         }
     }
 
-    $normalizedPath = $ProjectPath.ToLowerInvariant().Replace("\", "\\")
-    $legacyPath = $ProjectPath.ToLowerInvariant()
-    $content = Get-Content -Raw $Script:CodexConfigPath
-    $headers = @(
-        "[projects.'$normalizedPath']",
-        "[projects.'$legacyPath']"
-    )
-    $updated = Remove-TomlSectionsByHeader -Content $content -Headers $headers
-
-    if ($updated -eq $content) {
-        return @{
-            Changed = $false
-            BackupPath = $null
-        }
-    }
-
-    $backupPath = Set-CodexConfigContent -Content $updated -BackupSuffix "remove-project-trust"
+    $plan = Get-CodexUninstallConfigPlan
+    $backupPath = Save-CodexUninstallConfigPlan -Plan $plan
     return @{
-        Changed = $true
+        Changed = $plan.TrustChanged
         BackupPath = $backupPath
     }
 }
@@ -506,49 +656,27 @@ function Get-CodexInstallConfigPlan {
         New-Item -ItemType Directory -Force -Path $Script:CodexConfigDir | Out-Null
     }
 
-    $providerId = $Script:ProjectConfig["CODEX_PROVIDER_ID"]
-    $providerName = $Script:ProjectConfig["PRIVACY_PROVIDER_NAME"]
-    $normalizedPath = $Script:ProjectRoot.ToLowerInvariant().Replace("\", "\\")
-    $providerHeader = "[model_providers.$providerId]"
-    $trustHeader = "[projects.'$normalizedPath']"
-    $providerBlock = @"
-[model_providers.$providerId]
-name = "$providerName"
-base_url = "$Script:ProxyBaseUrl"
-wire_api = "responses"
-requires_openai_auth = true
-supports_websockets = false
-"@
-    $trustBlock = @"
-[projects.'$normalizedPath']
-trust_level = "trusted"
-"@
-
     $originalContent = Get-CodexConfigContent
-    $updatedContent = $originalContent
+    $document = Get-CodexConfigDocument -Content $originalContent
+    $providerBlock = Get-CodexProviderBlock
+    $trustBlock = Get-CodexProjectTrustBlock -ProjectPath $Script:ProjectRoot
+    $providerId = $Script:ProjectConfig["CODEX_PROVIDER_ID"]
 
-    $providerChanged = $false
-    if ($updatedContent -notmatch "(?m)^\[model_providers\.$([regex]::Escape($providerId))\]\r?$") {
-        $updatedContent = Add-TomlSection -Content $updatedContent -Section $providerBlock
-        $providerChanged = $true
-    }
-
-    $defaultProviderChanged = $false
     $currentProvider = ""
     if ($originalContent) {
         $currentProvider = Get-CodexDefaultProvider
     }
-    $providerUpdatedContent = Set-CodexDefaultProviderInContent -Content $updatedContent -ProviderId $providerId
-    if ($providerUpdatedContent -ne $updatedContent) {
-        $updatedContent = $providerUpdatedContent
-        $defaultProviderChanged = $true
-    }
+    $providerIndex = Find-CodexConfigBlockIndex -Document $document -Header $providerBlock.Header
+    $trustIndex = Find-CodexConfigBlockIndex -Document $document -Header $trustBlock.Header
 
-    $trustChanged = $false
-    if ($updatedContent -notmatch "(?m)^\[projects\.$([regex]::Escape("'" + $normalizedPath + "'"))\]\r?$") {
-        $updatedContent = Add-TomlSection -Content $updatedContent -Section $trustBlock
-        $trustChanged = $true
-    }
+    $updatedDocument = Set-CodexConfigBlock -Document $document -Header $providerBlock.Header -BodyLines $providerBlock.BodyLines
+    $updatedDocument = Set-CodexRootStringKey -Document $updatedDocument -Key "model_provider" -Value $providerId
+    $updatedDocument = Set-CodexConfigBlock -Document $updatedDocument -Header $trustBlock.Header -BodyLines $trustBlock.BodyLines
+
+    $updatedContent = Get-CodexConfigText -Document $updatedDocument
+    $providerChanged = ($providerIndex -lt 0)
+    $defaultProviderChanged = ($currentProvider -ne $providerId)
+    $trustChanged = ($trustIndex -lt 0)
 
     return @{
         OriginalContent = $originalContent
@@ -589,27 +717,31 @@ function Get-CodexUninstallConfigPlan {
     )
 
     $originalContent = Get-CodexConfigContent
-    $updatedContent = $originalContent
-
-    $providerRemovedContent = Remove-TomlSectionsByHeader -Content $updatedContent -Headers @($providerHeader)
-    $providerChanged = ($providerRemovedContent -ne $updatedContent)
-    $updatedContent = $providerRemovedContent
+    $document = Get-CodexConfigDocument -Content $originalContent
+    $providerChanged = ((Find-CodexConfigBlockIndex -Document $document -Header $providerHeader) -ge 0)
 
     $currentProvider = ""
     if ($originalContent) {
         $currentProvider = Get-CodexDefaultProvider
     }
 
+    $updatedDocument = Remove-CodexConfigBlocks -Document $document -Headers @($providerHeader)
+
     $defaultProviderChanged = $false
     if ($currentProvider -eq $providerId) {
-        $restoredContent = Set-CodexDefaultProviderInContent -Content $updatedContent -ProviderId $FallbackProvider
-        $defaultProviderChanged = ($restoredContent -ne $updatedContent)
-        $updatedContent = $restoredContent
+        $updatedDocument = Set-CodexRootStringKey -Document $updatedDocument -Key "model_provider" -Value $FallbackProvider
+        $defaultProviderChanged = $true
     }
 
-    $trustRemovedContent = Remove-TomlSectionsByHeader -Content $updatedContent -Headers $trustHeaders
-    $trustChanged = ($trustRemovedContent -ne $updatedContent)
-    $updatedContent = $trustRemovedContent
+    $trustChanged = $false
+    foreach ($header in $trustHeaders) {
+        if ((Find-CodexConfigBlockIndex -Document $updatedDocument -Header $header) -ge 0) {
+            $trustChanged = $true
+            break
+        }
+    }
+    $updatedDocument = Remove-CodexConfigBlocks -Document $updatedDocument -Headers $trustHeaders
+    $updatedContent = Get-CodexConfigText -Document $updatedDocument
 
     return @{
         OriginalContent = $originalContent
@@ -677,9 +809,8 @@ function Test-CodexProviderConfigured {
         return $false
     }
 
-    $content = Get-Content -Raw $Script:CodexConfigPath
-    $providerPattern = '^\[model_providers\.' + [regex]::Escape($providerId) + '\]\r?$'
-    return $content -match "(?m)$providerPattern"
+    $document = Get-CodexConfigDocument -Content (Get-CodexConfigContent)
+    return ((Find-CodexConfigBlockIndex -Document $document -Header "[model_providers.$providerId]") -ge 0)
 }
 
 function Get-CodexDefaultProvider {
@@ -687,11 +818,11 @@ function Get-CodexDefaultProvider {
         return ""
     }
 
-    $content = Get-Content -Raw $Script:CodexConfigPath
-    $match = [regex]::Match($content, '(?m)^model_provider\s*=\s*"([^"]+)"')
-
-    if ($match.Success) {
-        return $match.Groups[1].Value
+    foreach ($line in (Get-CodexConfigRootLines -Document (Get-CodexConfigDocument -Content (Get-CodexConfigContent)))) {
+        $match = [regex]::Match($line, '^\s*model_provider\s*=\s*"([^"]+)"')
+        if ($match.Success) {
+            return $match.Groups[1].Value
+        }
     }
 
     return ""

@@ -20,7 +20,7 @@ recognizer_registry:
       supported_languages:
         - en
         - lt
-      model_name: urchade/gliner_multi_pii-v1
+      model_name: /opt/models/gliner_multi_pii-v1
       threshold: 0.3
       map_location: cpu
 

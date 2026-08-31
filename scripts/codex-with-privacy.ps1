@@ -8,6 +8,7 @@ param(
 . (Join-Path $PSScriptRoot "common.ps1")
 
 Assert-Command -Name "codex" -DisplayName "Codex CLI"
+Ensure-ProjectDirectories
 
 if (-not (Test-Path $Workspace)) {
     throw "Workspace does not exist: $Workspace"
@@ -22,7 +23,7 @@ if (-not (Test-CodexLoggedIn)) {
     throw "Codex is not logged in. Run 'codex login' first."
 }
 
-Wait-HttpOk -Uri "$Script:ProxyBaseUrl/health" -TimeoutSeconds 10
+Wait-HttpOk -Uri $Script:ProxyHealthUrl -TimeoutSeconds 10
 
 $providerId = $Script:ProjectConfig["CODEX_PROVIDER_ID"]
 $configOverride = "model_provider=`"$providerId`""
