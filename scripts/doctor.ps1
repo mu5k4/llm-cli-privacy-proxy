@@ -9,7 +9,7 @@ $loginStatus = Get-CodexLoginStatus
 $providerConfigured = Test-CodexProviderConfigured
 $defaultProvider = Get-CodexDefaultProvider
 $analyzerHealth = Get-HealthSummary -Uri "$Script:AnalyzerBaseUrl/health"
-$proxyHealth = Get-HealthSummary -Uri "$Script:ProxyBaseUrl/health"
+$proxyHealth = Get-HealthSummary -Uri $Script:ProxyHealthUrl
 $results = @()
 
 function Add-DoctorResult {
@@ -80,7 +80,7 @@ Invoke-DoctorCheck -Name "Demo proof" -Check {
 }
 
 Write-Output "LLM CLI Privacy Proxy doctor"
-Write-Output "Proxy base URL: $Script:ProxyBaseUrl"
+Write-Output "Proxy base URL: $Script:ProxyDisplayBaseUrl"
 Write-Output ""
 Write-Output "Codex login status: $loginStatus"
 Write-Output "Provider configured: $providerConfigured"

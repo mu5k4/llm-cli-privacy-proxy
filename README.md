@@ -11,6 +11,9 @@ The current stack is designed around a local HTTP proxy:
 4. The anonymized request is forwarded to the upstream LLM API.
 5. Returned placeholder tokens are restored locally before the client sees the response.
 
+The local HTTP hop is protected by an install-generated secret path segment.
+Users do not log in to the proxy separately; the secret is configured automatically in the local provider URL.
+
 ## Scope
 
 The project identity is client-agnostic.
@@ -26,6 +29,9 @@ Today that means:
 ## Project Layout
 
 - `docker-compose.yml`: local stack definition
+- `pyproject.toml`: declared Python dependency source of truth for both runtime environments
+- `privacy-service.lock`: hash-locked install artifact for the proxy runtime
+- `analyzer.lock`: hash-locked install artifact for the analyzer-side Python additions
 - `privacy-service/`: proxy and anonymization logic
 - `privacy-cache/`: persistent Presidio cache data
 - `.env.example`: shareable runtime defaults for ports and upstream settings
@@ -153,6 +159,12 @@ That creates a timestamped zip under `./dist/` and excludes local runtime cache 
 
 Release metadata lives in `./VERSION`, `./CHANGELOG.md`, and `./CONTRIBUTING.md`.
 
+## Python Dependency Management
+
+- `pyproject.toml` is the declared source of truth for Python dependencies.
+- `privacy-service.lock` and `analyzer.lock` are the hash-locked install artifacts used by Docker builds.
+- Do not reintroduce handwritten `requirements.txt` files for these runtime environments.
+
 ## Codex Quickstart
 
 For a first-time Codex user on Windows:
@@ -254,7 +266,7 @@ $body = @{
   language = "en"
 } | ConvertTo-Json
 
-Invoke-RestMethod -Uri "http://127.0.0.1:8000/protect" -Method Post -ContentType "application/json" -Body $body
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/local/<redacted>/protect" -Method Post -ContentType "application/json" -Body $body
 ```
 
 Expected result:
@@ -270,7 +282,7 @@ $restoredBody = @{
   text = "<protected text returned by /protect>"
 } | ConvertTo-Json
 
-Invoke-RestMethod -Uri "http://127.0.0.1:8000/restore" -Method Post -ContentType "application/json" -Body $restoredBody
+Invoke-RestMethod -Uri "http://127.0.0.1:8000/local/<redacted>/restore" -Method Post -ContentType "application/json" -Body $restoredBody
 ```
 
 Expected result:

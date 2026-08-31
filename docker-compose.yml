@@ -14,26 +14,36 @@ services:
       ANALYZER_CONF_FILE: /app/analyzer-config.yaml
       GUNICORN_CMD_ARGS: "--timeout 300"
       WORKERS: "1"
+      PRESIDIO_TIMEOUT_SECONDS: "${PRESIDIO_TIMEOUT_SECONDS:-30}"
     volumes:
       - ./analyzer-config.yaml:/app/analyzer-config.yaml:ro
+      - ./privacy-cache/presidio-model-cache:/root/.cache
     ports:
       - "${PROXY_BIND_HOST:-127.0.0.1}:${ANALYZER_PORT:-5001}:3000"
+    mem_limit: 3g
+    cpus: 1.0
+    pids_limit: 256
+    read_only: true
+    tmpfs:
+      - /tmp:size=134217728
+      - /root/.gunicorn:size=16777216
     healthcheck:
       test:
         [
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3000/health', timeout=5)"
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:3000/health', timeout=30)"
         ]
       interval: 30s
-      timeout: 10s
+      timeout: 35s
       retries: 5
-      start_period: 20s
+      start_period: 180s
 
   privacy-service:
     build:
-      context: ./privacy-service
+      context: .
+      dockerfile: privacy-service/Dockerfile
     image: llm-cli-privacy-proxy:0.1.0
     container_name: llm-cli-privacy-proxy
     depends_on:
@@ -45,17 +55,46 @@ services:
     environment:
       PRESIDIO_URL: "${PRESIDIO_URL:-http://presidio-analyzer:3000}"
       UPSTREAM_BASE: "${UPSTREAM_BASE:-https://chatgpt.com/backend-api/codex}"
+      LOCAL_AUTH_TOKEN: "${LOCAL_AUTH_TOKEN}"
+      NOSEYPARKER_TIMEOUT_SECONDS: "${NOSEYPARKER_TIMEOUT_SECONDS:-30}"
+      PRESIDIO_TIMEOUT_SECONDS: "${PRESIDIO_TIMEOUT_SECONDS:-30}"
+      MAX_REQUEST_BODY_BYTES: "${MAX_REQUEST_BODY_BYTES:-524288}"
+      MAX_REQUEST_JSON_DEPTH: "${MAX_REQUEST_JSON_DEPTH:-32}"
+      MAX_REQUEST_FIELD_COUNT: "${MAX_REQUEST_FIELD_COUNT:-4096}"
+      MAX_REQUEST_TEXT_SLOTS: "${MAX_REQUEST_TEXT_SLOTS:-512}"
+      MAX_REQUEST_TEXT_BYTES: "${MAX_REQUEST_TEXT_BYTES:-200000}"
+      MAX_PROTECT_TEXT_BYTES: "${MAX_PROTECT_TEXT_BYTES:-200000}"
+      MAX_RESPONSE_CONCURRENCY: "${MAX_RESPONSE_CONCURRENCY:-4}"
+      RESPONSE_QUEUE_WAIT_SECONDS: "${RESPONSE_QUEUE_WAIT_SECONDS:-0.1}"
+      PRESIDIO_SCAN_CONCURRENCY: "${PRESIDIO_SCAN_CONCURRENCY:-1}"
+      UPSTREAM_CONNECT_TIMEOUT_SECONDS: "${UPSTREAM_CONNECT_TIMEOUT_SECONDS:-15}"
+      UPSTREAM_WRITE_TIMEOUT_SECONDS: "${UPSTREAM_WRITE_TIMEOUT_SECONDS:-60}"
+      UPSTREAM_READ_TIMEOUT_SECONDS: "${UPSTREAM_READ_TIMEOUT_SECONDS:-300}"
+      SESSION_TTL_SECONDS: "${SESSION_TTL_SECONDS:-900}"
+      MAX_ACTIVE_SESSIONS: "${MAX_ACTIVE_SESSIONS:-256}"
+      MAX_SESSION_BYTES: "${MAX_SESSION_BYTES:-262144}"
+      MAX_TOTAL_SESSION_BYTES: "${MAX_TOTAL_SESSION_BYTES:-4194304}"
+      PRESIDIO_CACHE_MAX_ENTRIES: "${PRESIDIO_CACHE_MAX_ENTRIES:-2048}"
+      PRESIDIO_CACHE_MAX_BYTES: "${PRESIDIO_CACHE_MAX_BYTES:-8388608}"
     volumes:
       - ./privacy-cache:/app/cache
+      - ./analyzer-config.yaml:/app/analyzer-config.yaml:ro
+      - ./VERSION:/app/VERSION:ro
     ports:
       - "${PROXY_BIND_HOST:-127.0.0.1}:${PROXY_PORT:-8000}:8000"
+    mem_limit: 1g
+    cpus: 1.0
+    pids_limit: 256
+    read_only: true
+    tmpfs:
+      - /tmp:size=134217728
     healthcheck:
       test:
         [
           "CMD",
           "python",
           "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=5)"
+          "import os, urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/local/' + os.environ['LOCAL_AUTH_TOKEN'] + '/health', timeout=5)"
         ]
       interval: 30s
       timeout: 10s

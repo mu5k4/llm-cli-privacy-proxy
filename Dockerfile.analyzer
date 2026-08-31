@@ -1,4 +1,21 @@
-FROM ghcr.io/data-privacy-stack/presidio-analyzer:latest
+FROM ghcr.io/data-privacy-stack/presidio-analyzer@sha256:ae8f6f111ac2f04e3fec552f7f80edd0dcbfa2dd69ee1b9e030475be31669885
 
 USER root
-RUN pip install --no-cache-dir gliner
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    HF_HOME=/opt/hf \
+    HF_HUB_DISABLE_TELEMETRY=1
+
+COPY pyproject.toml analyzer.lock /tmp/
+RUN pip install --no-cache-dir --require-hashes -r /tmp/analyzer.lock
+
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='urchade/gliner_multi_pii-v1', revision='1fcf13e85f4eef5394e1fcd406cf2ca9ea82351d', local_dir='/opt/models/gliner_multi_pii-v1', local_dir_use_symlinks=False)"
+RUN python -c "from huggingface_hub import snapshot_download; snapshot_download(repo_id='microsoft/mdeberta-v3-base', revision='a0484667b22365f84929a935b5e50a51f71f159d', local_dir='/tmp/mdeberta-v3-base', local_dir_use_symlinks=False)"
+RUN python -c "import pathlib, shutil; src = pathlib.Path('/tmp/mdeberta-v3-base'); dst = pathlib.Path('/opt/models/gliner_multi_pii-v1'); [shutil.copy2(src / name, dst / name) for name in ('config.json', 'spm.model', 'tokenizer_config.json')]"
+RUN python -c "import json, pathlib; path = pathlib.Path('/opt/models/gliner_multi_pii-v1/gliner_config.json'); data = json.loads(path.read_text()); data['model_name'] = '/opt/models/gliner_multi_pii-v1'; path.write_text(json.dumps(data, indent=2) + '\\n')"
+
+RUN python -c "import hashlib, pathlib; model = pathlib.Path('/opt/models/gliner_multi_pii-v1/pytorch_model.bin'); digest = hashlib.sha256(model.read_bytes()).hexdigest(); expected = '3003753fba99e40645cf088c7367a2c6211fc174897dc64f1f9c147c29d18d2d'; assert digest == expected, f'model checksum mismatch: {digest}'"
+RUN python -c "import hashlib, pathlib; root = pathlib.Path('/opt/models/gliner_multi_pii-v1'); expected = {'config.json': 'bcffcd343dc5efa5ef2d5a58d2b405eed108f01cc45b48d0a907b333ec41801f', 'spm.model': '13c8d666d62a7bc4ac8f040aab68e942c861f93303156cc28f5c7e885d86d6e3', 'tokenizer_config.json': '3f3978e0c036f2c2588cac34a6047cbb0af0b0dc1814254e291028529805496d'}; [(_ for _ in ()).throw(AssertionError(f'{name} checksum mismatch: {digest}')) if (digest := hashlib.sha256((root / name).read_bytes()).hexdigest()) != expected[name] else None for name in expected]"
+RUN python -c "import json, pathlib; path = pathlib.Path('/opt/models/gliner_multi_pii-v1/gliner_config.json'); data = json.loads(path.read_text()); assert data.get('model_name') == '/opt/models/gliner_multi_pii-v1', data"
+
+ENV HF_HUB_OFFLINE=1 \
+    TRANSFORMERS_OFFLINE=1
