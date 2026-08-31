@@ -1,6 +1,7 @@
 # Progress
 
 ## Completed
+- Commit 1c4a692 created on August 31, 2026 for the completed audit-remediation hardening cycle, pyproject-plus-lockfile dependency migration, runtime cache cleanup, and historical audit artifact removal.
 - Commit 51a7245 created on August 25, 2026 for the audit artifacts, memory-bank setup, remediation plan, and contributing doc removal.
 - Reviewed the repo structure.
 - Confirmed the memory-bank directory was missing.
