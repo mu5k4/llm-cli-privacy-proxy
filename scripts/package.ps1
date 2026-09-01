@@ -8,6 +8,46 @@ if ([string]::IsNullOrWhiteSpace($OutputDir)) {
     $OutputDir = Join-Path $Script:ProjectRoot "dist"
 }
 
+$excludedDirectoryNames = @("__pycache__")
+$excludedFilePatterns = @("*.pyc", "*.pyo")
+
+function Copy-PackageItem {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$SourcePath,
+        [Parameter(Mandatory = $true)]
+        [string]$DestinationPath
+    )
+
+    $item = Get-Item -LiteralPath $SourcePath
+
+    if ($item.PSIsContainer) {
+        New-Item -ItemType Directory -Force -Path $DestinationPath | Out-Null
+
+        Get-ChildItem -LiteralPath $SourcePath | ForEach-Object {
+            if ($_.PSIsContainer -and $_.Name -in $excludedDirectoryNames) {
+                return
+            }
+
+            if (-not $_.PSIsContainer) {
+                foreach ($pattern in $excludedFilePatterns) {
+                    if ($_.Name -like $pattern) {
+                        return
+                    }
+                }
+            }
+
+            Copy-PackageItem `
+                -SourcePath $_.FullName `
+                -DestinationPath (Join-Path $DestinationPath $_.Name)
+        }
+
+        return
+    }
+
+    Copy-Item -LiteralPath $SourcePath -Destination $DestinationPath -Force
+}
+
 $version = (Get-Content -LiteralPath (Join-Path $Script:ProjectRoot "VERSION") -Raw).Trim()
 $stagingDir = Join-Path ([System.IO.Path]::GetTempPath()) ("llm-cli-privacy-proxy-" + [guid]::NewGuid().ToString("N"))
 $packageName = "llm-cli-privacy-proxy-v$version-" + (Get-Date -Format "yyyyMMdd-HHmmss") + ".zip"
@@ -34,11 +74,9 @@ try {
     )
 
     foreach ($item in $itemsToCopy) {
-        Copy-Item `
-            -LiteralPath (Join-Path $Script:ProjectRoot $item) `
-            -Destination (Join-Path $stagingDir $item) `
-            -Recurse `
-            -Force
+        Copy-PackageItem `
+            -SourcePath (Join-Path $Script:ProjectRoot $item) `
+            -DestinationPath (Join-Path $stagingDir $item)
     }
 
     $cacheDir = Join-Path $stagingDir "privacy-cache"
