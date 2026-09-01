@@ -1,6 +1,12 @@
 # Progress
 
 ## Completed
+- Commit 6158a05 created on 2026-09-01 for audit handoff packaging updates: tightened `docs/teammate-handoff.md`, updated `scripts/package.ps1` to exclude transient Python cache artifacts from the packaged zip, rebuilt the package, and verified the resulting archive contents.
+- Commit 6158a05 also records the memory-bank files in the audit handoff branch so the handoff state ships with the repo history.
+<<<<<<< HEAD
+# Progress
+
+## Completed
 - Commit 1c4a692 created on August 31, 2026 for the completed audit-remediation hardening cycle, pyproject-plus-lockfile dependency migration, runtime cache cleanup, and historical audit artifact removal.
 - Commit 51a7245 created on August 25, 2026 for the audit artifacts, memory-bank setup, remediation plan, and contributing doc removal.
 - Reviewed the repo structure.
@@ -68,4 +74,14 @@
 
 ## Next Steps
 - The audit-remediation plan and deferred validation follow-ups are complete; wait for the next user-directed task or explicitly track any new hardening follow-up before making more changes.
+
+=======
+2026-09-01: Committed memory-bank updates for audit handoff.
+Commit: eca847b - Add memory-bank updates for audit handoff
+This branch now includes:
+- packaging script cleanup for audit zip output
+- audit-focused handoff note updates
+- memory-bank files committed into the branch
+Remaining: push the updated branch so the PR includes this commit.
+>>>>>>> 6158a05 (Add memory-bank updates for audit handoff)
 
