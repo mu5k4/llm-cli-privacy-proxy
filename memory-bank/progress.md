@@ -1,14 +1,11 @@
 # Progress
 
 ## Completed
-- Commit 6158a05 created on 2026-09-01 for audit handoff packaging updates: tightened `docs/teammate-handoff.md`, updated `scripts/package.ps1` to exclude transient Python cache artifacts from the packaged zip, rebuilt the package, and verified the resulting archive contents.
-- Commit 6158a05 also records the memory-bank files in the audit handoff branch so the handoff state ships with the repo history.
-<<<<<<< HEAD
-# Progress
-
-## Completed
+- Commit 0958358 created on September 1, 2026 for the final handoff script follow-up: fixed `docs/teammate-handoff.md` to reference the real `start.ps1` and `stop.ps1` helpers, kept `scripts/package.ps1` aligned with the removed `CONTRIBUTING.md`, and recorded the revalidated script/package state in memory-bank.
 - Commit 1c4a692 created on August 31, 2026 for the completed audit-remediation hardening cycle, pyproject-plus-lockfile dependency migration, runtime cache cleanup, and historical audit artifact removal.
 - Commit 51a7245 created on August 25, 2026 for the audit artifacts, memory-bank setup, remediation plan, and contributing doc removal.
+- Commit 6158a05 created on September 1, 2026 for audit handoff packaging updates: tightened `docs/teammate-handoff.md`, updated `scripts/package.ps1` to exclude transient Python cache artifacts from the packaged zip, rebuilt the package, and verified the resulting archive contents.
+- Commit 6158a05 also records the memory-bank files in the audit handoff branch so the handoff state ships with the repo history.
 - Reviewed the repo structure.
 - Confirmed the memory-bank directory was missing.
 - Extracted project context from the main README and integration docs.
@@ -35,7 +32,7 @@
 - Reviewed Phase 3 Item 6 on August 28, 2026 and confirmed the main remaining gaps are unbounded in-memory sessions, unbounded persistent Presidio cache growth/full-file rewrites, long detector timeouts without stronger budgets, and no top-level `/responses` request-body budget before deep processing.
 - Implemented the first Phase 3 Item 6 pass on August 31, 2026 in `privacy-service/app.py`, `privacy-service/proxy.py`, `docker-compose.yml`, and `scripts/regression.ps1` by adding request-body and payload-shape limits, response concurrency gating, bounded session retention with TTL/eviction/delete support, bounded Presidio cache size with atomic writes, and configurable detector/upstream timeouts plus container CPU/memory/PID/read-only limits.
 - Validated the Phase 3 Item 6 code path on August 31, 2026 with `python -m py_compile privacy-service/app.py privacy-service/proxy.py` and PowerShell parser validation for `scripts/regression.ps1` and `scripts/common.ps1`.
-- Attempted an additional import-based source validation on August 31, 2026, but the local runtime lacked Python dependencies such as `httpx`, so a rebuilt-container regression run is still pending.
+- Attempted an additional import-based source validation on August 31, 2026, but the local runtime lacked Python dependencies such as `httpx`, so a rebuilt-container regression run was pending until the stack was rebuilt.
 - Rebuilt the privacy-service container on August 31, 2026 and iterated on two follow-up fixes discovered by live validation: regression-harness scope repair for `Test-AuthenticatedRouteGuard`, and defensive initialization in `assign_session_token` for plain-dict test sessions.
 - Refined the August 31, 2026 container hardening so the analyzer keeps a read-only root filesystem while using tmpfs only for `/tmp` and `/root/.gunicorn`, a workspace-backed cache mount for `/root/.cache`, a longer startup health window, and a higher 3 GB analyzer memory cap to avoid repeated SIGKILL during model boot.
 - Completed the rebuilt-container validation on August 31, 2026: `docker compose build privacy-service`, `docker compose up -d privacy-service presidio-analyzer`, and `powershell -ExecutionPolicy Bypass -File .\\scripts\\regression.ps1` all converged, and the regression suite passed.
@@ -67,21 +64,12 @@
 - Verified the remaining bind-host follow-up on August 31, 2026 with minimal local config checks and live container inspection. `.env.example`, `docker-compose.yml`, and `scripts/common.ps1` all establish the source default `PROXY_BIND_HOST=127.0.0.1`; the current `.env` still sets `PROXY_BIND_HOST=127.0.0.1`; and `docker inspect llm-cli-privacy-proxy` reports the effective published binding as `127.0.0.1:8000`. No widened bind exposure was introduced during this remediation cycle.
 - On August 31, 2026, retired the now-historical audit artifact folder and temporary remediation-planning file after all remediation and deferred validation work had been completed and recorded into the core memory-bank files.
 - Modernized Python dependency management on August 31, 2026 by adopting a root `pyproject.toml` as the declared dependency source of truth, renaming the install lockfiles to `privacy-service.lock` and `analyzer.lock`, switching both Dockerfiles to the new lockfile paths, removing `privacy-service/requirements.txt`, and validating the migrated build with `docker compose build privacy-service presidio-analyzer` plus `powershell -ExecutionPolicy Bypass -File .\\scripts\\regression.ps1`, which passed.
+- On September 1, 2026, verified the script set again after the handoff packaging changes: all `scripts/*.ps1` files parsed successfully, `scripts/package.ps1` was confirmed as the only active script change, the package script successfully produced `dist/llm-cli-privacy-proxy-v0.1.0-20260901-104133.zip`, and the resulting archive contents matched the intended handoff layout without `CONTRIBUTING.md`.
+- On September 1, 2026, confirmed that `scripts/regression.ps1` still expects the local stack to be started first, matching the documented README workflow. After bringing the stack up with `scripts/start.ps1`, the full regression suite passed.
 
 ## Pending
 - Keep the memory-bank aligned with future architecture, script, and integration changes.
 - Expand decision history as explicit tradeoffs are made.
 
 ## Next Steps
-- The audit-remediation plan and deferred validation follow-ups are complete; wait for the next user-directed task or explicitly track any new hardening follow-up before making more changes.
-
-=======
-2026-09-01: Committed memory-bank updates for audit handoff.
-Commit: eca847b - Add memory-bank updates for audit handoff
-This branch now includes:
-- packaging script cleanup for audit zip output
-- audit-focused handoff note updates
-- memory-bank files committed into the branch
-Remaining: push the updated branch so the PR includes this commit.
->>>>>>> 6158a05 (Add memory-bank updates for audit handoff)
-
+- The scripts are currently in a validated state for handoff packaging; the next user-directed task can build on the current package or address any remaining docs/handoff cleanup.

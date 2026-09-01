@@ -63,7 +63,6 @@ try {
         "README.md",
         "VERSION",
         "CHANGELOG.md",
-        "CONTRIBUTING.md",
         ".env.example",
         ".gitignore",
         "analyzer-config.yaml",

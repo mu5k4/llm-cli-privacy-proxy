@@ -47,7 +47,7 @@ If they only want the lighter status summary without the full doctor run, they c
 After that, day-to-day usage is:
 
 ```powershell
-./scripts/start-stack.ps1
+./scripts/start.ps1
 ```
 
 Then open the repo they want to work in and run `codex` normally.
@@ -58,7 +58,7 @@ Run:
 
 ```powershell
 ./scripts/bootstrap.ps1
-./scripts/start-stack.ps1
+./scripts/start.ps1
 ./scripts/regression.ps1
 ./scripts/status.ps1
 ```
@@ -111,7 +111,7 @@ Cause:
 Stop the stack:
 
 ```powershell
-./scripts/stop-stack.ps1
+./scripts/stop.ps1
 ```
 
 Uninstall the integration:
@@ -127,7 +127,7 @@ Send the newest zip from dist.
 Unzip the project and open PowerShell in the project folder.
 Read docs/teammate-handoff.md first.
 If you want Codex to use the proxy, close Codex first, run ./scripts/install.ps1, then run ./scripts/doctor.ps1.
-If you only need the local proxy running for audit, run ./scripts/bootstrap.ps1, ./scripts/start-stack.ps1, ./scripts/regression.ps1, and ./scripts/status.ps1.
+If you only need the local proxy running for audit, run ./scripts/bootstrap.ps1, ./scripts/start.ps1, ./scripts/regression.ps1, and ./scripts/status.ps1.
 Before the audit, run ./scripts/codex-status.ps1 or doctor.ps1.
 If install fails with "os error 32", close Codex and rerun the install script.
 ```
