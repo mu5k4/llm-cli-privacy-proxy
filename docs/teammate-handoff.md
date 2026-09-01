@@ -1,6 +1,8 @@
 # Zipped Project Startup
 
-This note is for someone who receives the zipped project and needs to start the tool without extra help.
+This note is for the teammate who receives the packaged project and needs to start and audit it without extra help.
+
+The package to send is the newest zip from `dist/`.
 
 ## What They Need
 
@@ -14,6 +16,7 @@ This note is for someone who receives the zipped project and needs to start the 
 1. Unzip the project.
 2. Open PowerShell in the unzipped project folder.
 3. If they want Codex CLI integration, close any running Codex CLI sessions first.
+4. Read this note before running any scripts.
 
 ## If They Need Codex To Use The Proxy
 
@@ -36,6 +39,8 @@ Expected result:
 - `Default model_provider: privacy`
 - `Analyzer health: ok`
 - `Proxy health: ok`
+
+For audit work, this is the recommended path because it checks the full install flow, provider wiring, and the protect/restore behavior in one pass.
 
 If they only want the lighter status summary without the full doctor run, they can use `./scripts/codex-status.ps1` instead.
 
@@ -63,6 +68,8 @@ Expected result:
 - analyzer health is `ok`
 - proxy health is `ok`
 
+Use this path when they only need to inspect the local stack behavior and do not want the Codex CLI integration written into `~/.codex/config.toml`.
+
 ## One-Command Check
 
 For the broadest readiness check:
@@ -70,6 +77,8 @@ For the broadest readiness check:
 ```powershell
 ./scripts/doctor.ps1
 ```
+
+This is the best single command to run before starting the audit.
 
 ## Most Likely Failure On Windows
 
@@ -114,8 +123,11 @@ Uninstall the integration:
 ## Short Message To Send With The Zip
 
 ```text
+Send the newest zip from dist.
 Unzip the project and open PowerShell in the project folder.
+Read docs/teammate-handoff.md first.
 If you want Codex to use the proxy, close Codex first, run ./scripts/install.ps1, then run ./scripts/doctor.ps1.
-If you only need the local proxy running, run ./scripts/bootstrap.ps1, ./scripts/start-stack.ps1, ./scripts/regression.ps1, and ./scripts/status.ps1.
+If you only need the local proxy running for audit, run ./scripts/bootstrap.ps1, ./scripts/start-stack.ps1, ./scripts/regression.ps1, and ./scripts/status.ps1.
+Before the audit, run ./scripts/codex-status.ps1 or doctor.ps1.
 If install fails with "os error 32", close Codex and rerun the install script.
 ```
