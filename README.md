@@ -262,7 +262,7 @@ Protect example:
 
 ```powershell
 $body = @{
-  text = "My name is Jonas, email jonas@example.com, phone +37061234567, and API key DEMO_SECRET_VALUE"
+  text = "My name is Jonas, email jonas@example.com, phone +37061234567, and demo credential DEMO_SECRET_VALUE"
   language = "en"
 } | ConvertTo-Json
 
@@ -367,4 +367,3 @@ Most users should ignore the wrapper and run plain `codex` after the one-time in
 The runtime and documentation have been rebranded to `LLM CLI Privacy Proxy`.
 The on-disk folder has been renamed to `tools/llm-cli-privacy-proxy` to match the product identity.
 Older notes and handoffs may still mention `tools/cline-privacy` as the previous path.
-

@@ -7,7 +7,7 @@ if (-not (Test-PrivacyStackHealthy)) {
     throw "Privacy stack is not healthy. Run ./scripts/start.ps1 first."
 }
 
-$sampleText = "My name is Jonas, email jonas@example.com, phone +37061234567, and API key DEMO_SECRET_VALUE"
+$sampleText = "My name is Jonas, email jonas@example.com, phone +37061234567, and demo credential DEMO_SECRET_VALUE"
 $protectBody = @{
     text = $sampleText
     language = "en"
@@ -21,6 +21,10 @@ $protectResponse = Invoke-RestMethod `
 
 if (-not $protectResponse.session_id) {
     throw "Protect response did not include session_id."
+}
+
+if (-not $protectResponse.session_secret) {
+    throw "Protect response did not include session_secret."
 }
 
 if (-not $protectResponse.text) {
@@ -43,6 +47,7 @@ $restoreBody = @{
 $restoreResponse = Invoke-RestMethod `
     -Uri "$Script:ProxyBaseUrl/restore" `
     -Method Post `
+    -Headers @{ "x-session-secret" = $protectResponse.session_secret } `
     -ContentType "application/json" `
     -Body $restoreBody
 
@@ -58,4 +63,3 @@ Write-Output "Demo proof passed."
 Write-Output "Session ID: $($protectResponse.session_id)"
 Write-Output "Protected text: $($protectResponse.text)"
 Write-Output "Restored text: $($restoreResponse.text)"
-

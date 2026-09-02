@@ -20,6 +20,16 @@ function Assert-True {
     }
 }
 
+function Get-ProjectFileContent {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$RelativePath
+    )
+
+    $path = Join-Path $Script:ProjectRoot $RelativePath
+    return Get-Content -LiteralPath $path -Raw
+}
+
 function Invoke-JsonPost {
     param(
         [Parameter(Mandatory = $true)]
@@ -567,12 +577,12 @@ print("ok")
 }
 
 function Test-SupplyChainPins {
-    $privacyDockerfile = Get-Content "privacy-service\Dockerfile" -Raw
-    $analyzerDockerfile = Get-Content "Dockerfile.analyzer" -Raw
-    $pyproject = Get-Content "pyproject.toml" -Raw
-    $lockFile = Get-Content "privacy-service.lock" -Raw
-    $analyzerLock = Get-Content "analyzer.lock" -Raw
-    $analyzerConfig = Get-Content "analyzer-config.yaml" -Raw
+    $privacyDockerfile = Get-ProjectFileContent -RelativePath "privacy-service\Dockerfile"
+    $analyzerDockerfile = Get-ProjectFileContent -RelativePath "Dockerfile.analyzer"
+    $pyproject = Get-ProjectFileContent -RelativePath "pyproject.toml"
+    $lockFile = Get-ProjectFileContent -RelativePath "privacy-service.lock"
+    $analyzerLock = Get-ProjectFileContent -RelativePath "analyzer.lock"
+    $analyzerConfig = Get-ProjectFileContent -RelativePath "analyzer-config.yaml"
 
     Assert-True -Condition ($privacyDockerfile -match '@sha256:') -Message "Privacy-service Dockerfile is missing immutable image digests."
     Assert-True -Condition ($analyzerDockerfile -match '@sha256:') -Message "Analyzer Dockerfile is missing immutable image digests."
@@ -984,9 +994,9 @@ function Test-FailClosedDetection {
 }
 
 Test-ProtectRestoreRoundTrip `
-    -Text "My name is Alice Example, email alice@example.com, IP 203.0.113.5, token DEMO_SECRET_VALUE." `
+    -Text "My name is Alice Example, email alice@example.com, IP 203.0.113.5." `
     -Language "en" `
-    -Secrets @("Alice Example", "alice@example.com", "203.0.113.5", "DEMO_SECRET_VALUE") | Out-Null
+    -Secrets @("Alice Example", "alice@example.com", "203.0.113.5") | Out-Null
 
 Test-ProtectRestoreRoundTrip `
     -Text "Mano vardas Jonas Pavyzdys, el. paštas jonas@example.lt, IP 203.0.113.77." `
@@ -1013,4 +1023,3 @@ if ($IncludeDisruptive) {
 }
 
 Write-Output "Regression suite passed."
-

@@ -139,7 +139,7 @@ Manual example:
 
 ```powershell
 $body = @{
-  text = "My name is Jonas, email jonas@example.com, phone +37061234567, and API key DEMO_SECRET_VALUE"
+  text = "My name is Jonas, email jonas@example.com, phone +37061234567, and demo credential DEMO_SECRET_VALUE"
   language = "en"
 } | ConvertTo-Json
 
@@ -177,4 +177,3 @@ Use the wrapper only when you deliberately want an explicit per-run override ins
 - The proxy only works when the local stack is running on the host/port configured in `.env`.
 - Codex authentication remains handled by Codex/OpenAI rather than by the proxy.
 - After installation, the intended day-to-day workflow is plain `codex`, not the wrapper script.
-
