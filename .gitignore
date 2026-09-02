@@ -1,4 +1,5 @@
 .env
+.claude/
 dist/
 privacy-cache/*.json
 privacy-cache/presidio-model-cache/

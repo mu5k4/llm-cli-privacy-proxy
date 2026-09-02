@@ -11,10 +11,10 @@ Claude Code should be treated as a separate integration, not part of the proxy i
 
 ## Proxy Endpoint
 
-Use the proxy base URL from `.env`. The default is:
+Use the secret-scoped proxy base URL derived from `.env`. By default it looks like:
 
 ```text
-http://127.0.0.1:8000
+http://127.0.0.1:8000/local/<redacted>
 ```
 
 ## Team Onboarding Checklist
@@ -22,7 +22,7 @@ http://127.0.0.1:8000
 1. Run `./scripts/bootstrap.ps1`
 2. Run `./scripts/start.ps1`
 3. Confirm `./scripts/status.ps1` reports both services healthy
-4. Configure Claude Code to send requests to the local proxy base URL
+4. Configure Claude Code to send requests to the secret-scoped local proxy base URL
 5. Keep Claude authentication enabled in Claude Code
 6. Send a fake prompt containing an email, IP, and test token
 7. Confirm the request succeeds and the final Claude response does not leak raw placeholder tokens back to the user
@@ -32,12 +32,13 @@ http://127.0.0.1:8000
 The exact Claude Code keys can vary by version, but the integration should always follow this pattern:
 
 ```text
-provider base URL -> http://127.0.0.1:8000
+provider base URL -> http://127.0.0.1:8000/local/<redacted>
 authentication -> managed by Claude Code
-proxy runtime auth -> none added locally
+proxy runtime auth -> install-generated secret path segment in the local provider URL
 ```
 
 ## Notes
 
 - The exact Claude Code configuration keys can change over time, so keep those instructions isolated from the core proxy docs.
+- Do not point Claude Code at the plain `http://127.0.0.1:8000` root path; the public local path intentionally returns `404`.
 - The goal is for the same local anonymization layer to be reusable across Codex, Claude Code, and future LLM CLIs.

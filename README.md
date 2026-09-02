@@ -157,7 +157,7 @@ If you want a clean archive of the project:
 
 That creates a timestamped zip under `./dist/` and excludes local runtime cache plus machine-specific `.env`.
 
-Release metadata lives in `./VERSION`, `./CHANGELOG.md`, and `./CONTRIBUTING.md`.
+Release metadata lives in `./VERSION` and `./CHANGELOG.md`.
 
 ## Python Dependency Management
 

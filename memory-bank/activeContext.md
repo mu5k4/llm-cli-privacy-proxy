@@ -8,6 +8,7 @@ The core runtime and PowerShell workflow are in a working state. The current pub
 - Keep the `/responses` request surface intentionally narrow and fail-closed.
 - Protect the local HTTP hop with an install-generated secret path in the provider URL.
 - Keep public tracked project context high level and avoid machine-local operational detail.
+- Keep public-facing docs aligned with the secret-scoped local proxy path and current tracked files.
 
 ## Immediate Next Useful Work
 - Preserve the current runtime hardening, request filtering, restore-boundary controls, and dependency pinning.
