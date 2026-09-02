@@ -14,3 +14,4 @@ The core runtime and PowerShell workflow are in a working state. The current pub
 - Preserve the current runtime hardening, request filtering, restore-boundary controls, and dependency pinning.
 - Keep scripts runnable from either the repo root or the `scripts/` directory.
 - Keep public documentation and tracked examples free of real secrets and low-value secret-scanner noise.
+- The full script retest passed on September 2, 2026 and the restored stack is currently healthy.
