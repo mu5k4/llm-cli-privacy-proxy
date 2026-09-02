@@ -433,6 +433,141 @@ print("ok")
     Assert-True -Condition ($result -match "ok") -Message "Cross-slot canonical scanning regression did not report success."
 }
 
+function Test-ResponsesFastPath {
+    $code = @'
+import asyncio
+
+from proxy import build_responses_request
+
+
+async def main():
+    import proxy
+
+    original_scan = proxy.scan_presidio_unique
+    original_nosey = proxy.nosey_parker_spans
+
+    def fake_nosey(text):
+        marker = "ghp_abcdefghijklmnopqrstuvwxyz123456"
+        start = text.find(marker)
+        if start < 0:
+            return []
+        return [
+            {
+                "start": start,
+                "end": start + len(marker),
+                "entity_type": "SECRET",
+                "score": 1.0,
+                "source": "noseyparker",
+            }
+        ]
+
+    try:
+        async def fail_scan(*args, **kwargs):
+            raise AssertionError("responses fast path should not call presidio")
+
+        proxy.scan_presidio_unique = fail_scan
+        proxy.nosey_parker_spans = fake_nosey
+
+        session = {
+            "token_to_value": {},
+            "value_to_token": {},
+            "counters": {},
+        }
+
+        payload = {
+            "model": "gpt-5",
+            "input": "Reach me at alice@example.com, +370 612 34567, 203.0.113.7, IBAN LT121000011101001000, https://example.com, 4242 4242 4242 4242, token=ABCDEF1234567890ABCDEF1234567890 and ghp_abcdefghijklmnopqrstuvwxyz123456",
+            "instructions": "Use alice@example.com and 203.0.113.7 only for the demo",
+        }
+
+        sanitized = await build_responses_request(payload, session)
+
+        assert "alice@example.com" not in sanitized["input"]
+        assert "203.0.113.7" not in sanitized["input"]
+        assert "LT121000011101001000" not in sanitized["input"]
+        assert "https://example.com" not in sanitized["input"]
+        assert "4242 4242 4242 4242" not in sanitized["input"]
+        assert "ABCDEF1234567890ABCDEF1234567890" not in sanitized["input"]
+        assert "ghp_abcdefghijklmnopqrstuvwxyz123456" not in sanitized["input"]
+        assert "alice@example.com" not in sanitized["instructions"]
+        assert "203.0.113.7" not in sanitized["instructions"]
+        assert any(token.startswith("GP_EMAIL_ADDRESS_") for token in session["token_to_value"])
+        assert any(token.startswith("GP_IP_ADDRESS_") for token in session["token_to_value"])
+        assert any(token.startswith("GP_IBAN_CODE_") for token in session["token_to_value"])
+        assert any(token.startswith("GP_URL_") for token in session["token_to_value"])
+        assert any(token.startswith("GP_CREDIT_CARD_") for token in session["token_to_value"])
+        assert any(token.startswith("GP_SECRET_") for token in session["token_to_value"])
+    finally:
+        proxy.scan_presidio_unique = original_scan
+        proxy.nosey_parker_spans = original_nosey
+
+asyncio.run(main())
+print("ok")
+'@
+
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($code))
+    $runner = "import base64; exec(base64.b64decode('$encoded').decode('utf-8'))"
+    $result = & docker exec llm-cli-privacy-proxy python -c $runner
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Responses fast-path regression failed."
+    }
+
+    Assert-True -Condition ($result -match "ok") -Message "Responses fast-path regression did not report success."
+}
+
+function Test-ResponsesLargePayloadSkipsNoseyParker {
+    $code = @'
+import asyncio
+
+from proxy import build_responses_request
+
+
+async def main():
+    import proxy
+
+    original_nosey = proxy.nosey_parker_spans
+
+    try:
+        def fail_nosey(_text):
+            raise AssertionError("large benign responses payload should skip noseyparker")
+
+        proxy.nosey_parker_spans = fail_nosey
+
+        session = {
+            "token_to_value": {},
+            "value_to_token": {},
+            "counters": {},
+        }
+
+        big_text = ("safe text block " * 1400) + "alice@example.com"
+        payload = {
+            "model": "gpt-5",
+            "input": big_text,
+        }
+
+        sanitized = await build_responses_request(payload, session)
+
+        assert "alice@example.com" not in sanitized["input"]
+        assert any(token.startswith("GP_EMAIL_ADDRESS_") for token in session["token_to_value"])
+    finally:
+        proxy.nosey_parker_spans = original_nosey
+
+asyncio.run(main())
+print("ok")
+'@
+
+    $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($code))
+    $runner = "import base64; exec(base64.b64decode('$encoded').decode('utf-8'))"
+    $result = & docker exec llm-cli-privacy-proxy python -c $runner
+
+    if ($LASTEXITCODE -ne 0) {
+        throw "Responses large-payload skip regression failed."
+    }
+
+    Assert-True -Condition ($result -match "ok") -Message "Responses large-payload skip regression did not report success."
+}
+
 function Test-OverlapUnionPreservation {
     $code = @'
 from app import resolve_overlaps
@@ -608,7 +743,7 @@ function Test-SupplyChainPins {
     Assert-True -Condition ($analyzerConfig -match 'model_name: /opt/models/gliner_multi_pii-v1') -Message "Analyzer config is not pinned to the local model snapshot."
 }
 
-function Test-ResponsesAllowlistGuards {
+function Test-ResponsesRequestGuards {
     $code = @'
 import asyncio
 
@@ -653,6 +788,10 @@ async def main():
         "model": "gpt-5",
         "input": "Contact me at test@example.com",
         "instructions": "Use test@example.com if needed",
+        "client_metadata": {
+            "client": "codex",
+            "surface": "cli",
+        },
         "stream": True,
         "text": {
             "format": {
@@ -668,6 +807,27 @@ async def main():
             {
                 "type": "shell",
             },
+            {
+                "type": "function",
+                "name": "get_status",
+                "description": "Return current status",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "verbose": {
+                            "type": "boolean",
+                        }
+                    }
+                },
+                "strict": True,
+            },
+            {
+                "type": "mcp",
+                "server_label": "local",
+                "tool_names": [
+                    "fetch_docs",
+                ],
+            },
         ],
     }
     sanitized = await build_responses_request(payload, session)
@@ -675,6 +835,27 @@ async def main():
     assert sanitized["stream"] is True
     assert "test@example.com" not in sanitized["input"]
     assert "test@example.com" not in sanitized["instructions"]
+    assert sanitized["client_metadata"] == {
+        "client": "codex",
+        "surface": "cli",
+    }
+
+    long_turn_metadata = "x" * 2048
+    long_metadata_sanitized = await build_responses_request(
+        {
+            "model": "gpt-5",
+            "input": "hello",
+            "client_metadata": {
+                "x-codex-turn-metadata": long_turn_metadata,
+            },
+        },
+        {
+            "token_to_value": {},
+            "value_to_token": {},
+            "counters": {},
+        },
+    )
+    assert long_metadata_sanitized["client_metadata"]["x-codex-turn-metadata"] == long_turn_metadata
     assert sanitized["text"] == {
         "format": {
             "type": "text",
@@ -689,7 +870,72 @@ async def main():
         {
             "type": "shell",
         },
+        {
+            "type": "function",
+            "name": "get_status",
+            "description": "Return current status",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "verbose": {
+                        "type": "boolean",
+                    }
+                }
+            },
+            "strict": True,
+        },
+        {
+            "type": "mcp",
+            "server_label": "local",
+            "tool_names": [
+                "fetch_docs",
+            ],
+        },
     ]
+
+    sanitized = await build_responses_request(
+        {
+            "model": "gpt-5",
+            "input": "hello",
+            "text": {
+                "format": {
+                    "type": "json_schema",
+                    "name": "response_payload",
+                    "strict": True,
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "status": {
+                                "type": "string",
+                            }
+                        },
+                        "required": ["status"],
+                    },
+                }
+            },
+        },
+        {
+            "token_to_value": {},
+            "value_to_token": {},
+            "counters": {},
+        },
+    )
+    assert sanitized["text"] == {
+        "format": {
+            "type": "json_schema",
+            "name": "response_payload",
+            "strict": True,
+            "schema": {
+                "type": "object",
+                "properties": {
+                    "status": {
+                        "type": "string",
+                    }
+                },
+                "required": ["status"],
+            },
+        }
+    }
 
     try:
         await build_responses_request(
@@ -713,12 +959,9 @@ async def main():
             {
                 "model": "gpt-5",
                 "input": "hello",
-                "tools": [
-                    {
-                        "type": "function",
-                        "name": "send_secret",
-                    }
-                ],
+                "client_metadata": {
+                    "x-codex-turn-metadata": "x" * 20000,
+                },
             },
             {
                 "token_to_value": {},
@@ -726,7 +969,7 @@ async def main():
                 "counters": {},
             },
         )
-        raise AssertionError("unsafe tool type was accepted")
+        raise AssertionError("oversized client_metadata value was accepted")
     except HTTPException as exc:
         assert exc.status_code == 400
 
@@ -735,9 +978,61 @@ async def main():
             {
                 "model": "gpt-5",
                 "input": "hello",
+                "client_metadata": {
+                    "ok": "yes",
+                    "nested": {
+                        "no": "no",
+                    },
+                },
+            },
+            {
+                "token_to_value": {},
+                "value_to_token": {},
+                "counters": {},
+            },
+        )
+        raise AssertionError("nested client_metadata value was accepted")
+    except HTTPException as exc:
+        assert exc.status_code == 400
+
+    sanitized = await build_responses_request(
+        {
+            "model": "gpt-5",
+            "input": "hello",
+            "tools": [
+                {
+                    "type": "totally_unknown_tool",
+                    "supports": {
+                        "streaming": True,
+                        "modes": ["fast", "safe"],
+                    },
+                }
+            ],
+        },
+        {
+            "token_to_value": {},
+            "value_to_token": {},
+            "counters": {},
+        },
+    )
+    assert sanitized["tools"] == [
+        {
+            "type": "totally_unknown_tool",
+            "supports": {
+                "streaming": True,
+                "modes": ["fast", "safe"],
+            },
+        }
+    ]
+
+    try:
+        await build_responses_request(
+            {
+                "model": "gpt-5",
+                "input": "hello",
                 "text": {
                     "format": {
-                        "type": "json_schema",
+                        "type": "totally_unknown_format",
                     }
                 },
             },
@@ -770,27 +1065,35 @@ async def main():
     except HTTPException as exc:
         assert exc.status_code == 400
 
-    try:
-        await build_responses_request(
-            {
-                "model": "gpt-5",
-                "input": "hello",
-                "tools": [
-                    {
-                        "type": "web_search_preview",
-                        "description": "secret text",
-                    }
-                ],
+    sanitized = await build_responses_request(
+        {
+            "model": "gpt-5",
+            "input": "hello",
+            "tools": [
+                {
+                    "type": "web_search_preview",
+                    "user_location": {
+                        "type": "approximate",
+                        "city": "Vilnius",
+                    },
+                }
+            ],
+        },
+        {
+            "token_to_value": {},
+            "value_to_token": {},
+            "counters": {},
+        },
+    )
+    assert sanitized["tools"] == [
+        {
+            "type": "web_search_preview",
+            "user_location": {
+                "type": "approximate",
+                "city": "Vilnius",
             },
-            {
-                "token_to_value": {},
-                "value_to_token": {},
-                "counters": {},
-            },
-        )
-        raise AssertionError("tool extra keys were accepted")
-    except HTTPException as exc:
-        assert exc.status_code == 400
+        }
+    ]
 
     request = FakeRequest(
         headers=[
@@ -821,10 +1124,10 @@ print("ok")
     $result = & docker exec llm-cli-privacy-proxy python -c $runner
 
     if ($LASTEXITCODE -ne 0) {
-        throw "Responses allowlist regression failed."
+        throw "Responses request-guard regression failed."
     }
 
-    Assert-True -Condition ($result -match "ok") -Message "Responses allowlist regression did not report success."
+    Assert-True -Condition ($result -match "ok") -Message "Responses request-guard regression did not report success."
 }
 
 function Test-ResourceBoundsGuards {
@@ -1009,9 +1312,11 @@ Test-SessionOwnershipGuards
 Test-OneShotRestoreInvalidation
 Test-AuthenticatedRouteGuard
 Test-ResponsesGuardRails
-Test-ResponsesAllowlistGuards
+Test-ResponsesRequestGuards
 Test-ResourceBoundsGuards
 Test-CrossSlotCanonicalScanning
+Test-ResponsesFastPath
+Test-ResponsesLargePayloadSkipsNoseyParker
 Test-OverlapUnionPreservation
 Test-LongEntityBoundaryHandling
 Test-SupplyChainPins

@@ -116,6 +116,8 @@ What `./scripts/codex-status.ps1` should show:
 - `Analyzer health: unreachable` or `Proxy health: unreachable`: run `./scripts/start.ps1`, then rerun `./scripts/codex-status.ps1`.
 - Port collision on the local proxy or analyzer: edit `.env`, change `PROXY_PORT` or `ANALYZER_PORT`, restart the stack, then rerun `./scripts/install.ps1`.
 - `codex` starts but does not appear to use the proxy: run `docker logs -f llm-cli-privacy-proxy` and confirm you see `POST /responses` after sending a Codex prompt.
+- intermittent `/responses` `400` errors mentioning `body.text.format`: update to the latest proxy build. The proxy now accepts Codex JSON-schema response format payloads, including `name`, `schema`, and `strict`.
+- Codex feels slow even though the proxy is healthy: watch `docker logs -f llm-cli-privacy-proxy` during a real prompt. Recent builds emit structured `/responses` timing events and an `x-privacy-proxy-trace-id` header so you can tell whether the time is in local sanitization, upstream first chunk, or total stream generation.
 - `scripts/demo-proof.ps1` is the fastest local anonymization proof if you want something stronger than raw traffic logs.
 - `scripts/doctor.ps1` is the fastest all-in-one check because it now includes the `codex-status.ps1`-style status summary, Codex config checks, stack health, and the proof script together.
 - `scripts/uninstall.ps1` removes the privacy-provider config and tears the stack back down if you want Codex to stop using the proxy.
@@ -128,6 +130,7 @@ If you want a concrete demo that does not depend on guessing from container logs
 2. Run `./scripts/demo-proof.ps1`.
 3. Optionally, in another terminal, watch proxy traffic with `docker logs -f llm-cli-privacy-proxy`.
 4. For live Codex proof, send a Codex prompt and confirm you see `POST /responses`.
+5. If you need end-to-end timing, correlate the structured `/responses` timing log lines with the `x-privacy-proxy-trace-id` response header from the same request.
 
 Automated example:
 

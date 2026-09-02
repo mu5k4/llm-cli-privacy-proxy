@@ -5,6 +5,8 @@ import json
 import os
 import re
 import tempfile
+import time
+import uuid
 from collections import OrderedDict
 from pathlib import Path
 
@@ -101,6 +103,107 @@ def build_presidio_cache_fingerprint():
 
 
 PRESIDIO_CACHE_FINGERPRINT = build_presidio_cache_fingerprint()
+
+FAST_EMAIL_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9._%+-])([A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,})(?![A-Za-z0-9._%+-])"
+)
+FAST_IPV4_PATTERN = re.compile(
+    r"(?<!\d)((?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3})(?!\d)"
+)
+FAST_URL_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9])((?:https?://|www\.)[^\s<>'\"]+)"
+)
+FAST_IBAN_PATTERN = re.compile(
+    r"(?<![A-Z0-9])([A-Z]{2}\d{2}[A-Z0-9]{11,30})(?![A-Z0-9])",
+    re.IGNORECASE,
+)
+FAST_PHONE_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9])(\+?\d[\d()\-\s]{6,}\d)(?![A-Za-z0-9])"
+)
+FAST_SECRET_PATTERN = re.compile(
+    r"(?<![A-Za-z0-9_])(sk-[A-Za-z0-9_-]{12,}|ghp_[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|Bearer\s+[A-Za-z0-9._-]{16,})(?![A-Za-z0-9_])"
+)
+FAST_HEX_SECRET_PATTERN = re.compile(
+    r"(?i)(?<![A-Za-z0-9])(api[_-]?key|token|secret|password|passwd|authorization)\s*[:=]\s*['\"]?([A-F0-9]{16,}|[A-Za-z0-9_-]{24,})['\"]?(?![A-Za-z0-9])"
+)
+FAST_CARD_CANDIDATE_PATTERN = re.compile(
+    r"(?<!\d)(?:\d[ -]?){13,19}(?!\d)"
+)
+RESPONSES_NOSEYPARKER_MAX_BYTES = int(
+    os.environ.get("RESPONSES_NOSEYPARKER_MAX_BYTES", "16384")
+)
+RESPONSES_SECRET_HINT_PATTERN = re.compile(
+    r"(?i)(sk-[A-Za-z0-9_-]{12,}|ghp_[A-Za-z0-9]{20,}|AIza[0-9A-Za-z_-]{20,}|xox[baprs]-[A-Za-z0-9-]{10,}|Bearer\s+[A-Za-z0-9._-]{16,}|AKIA[0-9A-Z]{16}|-----BEGIN [A-Z ]*PRIVATE KEY-----|(api[_-]?key|token|secret|password|passwd|authorization)\s*[:=]\s*['\"]?[A-Za-z0-9/_+=.-]{12,})"
+)
+
+
+def is_luhn_valid(number: str):
+    digits = [int(char) for char in number if char.isdigit()]
+    if len(digits) < 13 or len(digits) > 19:
+        return False
+
+    checksum = 0
+    parity = len(digits) % 2
+    for index, digit in enumerate(digits):
+        if index % 2 == parity:
+            digit *= 2
+            if digit > 9:
+                digit -= 9
+        checksum += digit
+
+    return checksum % 10 == 0
+
+
+def build_regex_span(start: int, end: int, entity_type: str, score=0.95):
+    return {
+        "start": start,
+        "end": end,
+        "entity_type": entity_type,
+        "score": score,
+        "source": "regex",
+    }
+
+
+def fast_regex_spans(text: str):
+    spans = []
+
+    for match in FAST_EMAIL_PATTERN.finditer(text):
+        spans.append(build_regex_span(match.start(1), match.end(1), "EMAIL_ADDRESS"))
+
+    for match in FAST_IPV4_PATTERN.finditer(text):
+        spans.append(build_regex_span(match.start(1), match.end(1), "IP_ADDRESS"))
+
+    for match in FAST_URL_PATTERN.finditer(text):
+        spans.append(build_regex_span(match.start(1), match.end(1), "URL"))
+
+    for match in FAST_IBAN_PATTERN.finditer(text):
+        spans.append(build_regex_span(match.start(1), match.end(1), "IBAN_CODE"))
+
+    for match in FAST_PHONE_PATTERN.finditer(text):
+        digit_count = sum(1 for char in match.group(1) if char.isdigit())
+        if digit_count >= 8:
+            spans.append(build_regex_span(match.start(1), match.end(1), "PHONE_NUMBER", score=0.8))
+
+    for match in FAST_SECRET_PATTERN.finditer(text):
+        spans.append(build_regex_span(match.start(1), match.end(1), "SECRET", score=1.0))
+
+    for match in FAST_HEX_SECRET_PATTERN.finditer(text):
+        spans.append(build_regex_span(match.start(2), match.end(2), "SECRET", score=1.0))
+
+    for match in FAST_CARD_CANDIDATE_PATTERN.finditer(text):
+        candidate = match.group(0)
+        digits = ''.join(char for char in candidate if char.isdigit())
+        if is_luhn_valid(digits):
+            spans.append(build_regex_span(match.start(0), match.end(0), "CREDIT_CARD", score=0.9))
+
+    return spans
+
+
+def should_run_responses_nosey_parker(text: str):
+    if len(text.encode("utf-8")) <= RESPONSES_NOSEYPARKER_MAX_BYTES:
+        return True
+    return RESPONSES_SECRET_HINT_PATTERN.search(text) is not None
+
 
 def load_presidio_cache():
     try:
@@ -237,6 +340,7 @@ ALLOWED_QUERY_PARAMS = {
 
 ALLOWED_RESPONSE_TOP_LEVEL_KEYS = {
     "background",
+    "client_metadata",
     "conversation",
     "include",
     "input",
@@ -268,6 +372,7 @@ MAX_OBJECT_KEYS = 256
 MAX_METADATA_KEYS = 16
 MAX_METADATA_KEY_LENGTH = 64
 MAX_METADATA_VALUE_LENGTH = 512
+MAX_CLIENT_METADATA_VALUE_LENGTH = 16384
 MAX_TOOL_COUNT = 128
 MAX_INCLUDE_COUNT = 32
 
@@ -307,17 +412,11 @@ SUPPORTED_TOOL_CHOICE_STRINGS = {
 SUPPORTED_TEXT_FORMAT_TYPES = {
     "text",
     "json_object",
+    "json_schema",
 }
 
-SUPPORTED_SIMPLE_TOOL_TYPES = {
-    "apply_patch",
-    "code_interpreter",
-    "computer_use_preview",
-    "file_search",
-    "image_generation",
-    "shell",
-    "web_search_preview",
-}
+MAX_TOOL_SCHEMA_DEPTH = 12
+MAX_TEXT_FORMAT_SCHEMA_DEPTH = 12
 
 
 def forward_request_headers(request: Request):
@@ -709,6 +808,52 @@ async def protect_payload_input(value, session, language="lt"):
     )
 
 
+async def protect_responses_payload_input(value, session):
+    slots = []
+    collect_text_slots(value, slots)
+
+    if not slots:
+        return value
+
+    corpus, ranges = build_secret_corpus(slots)
+    regex_task = asyncio.to_thread(
+        fast_regex_spans,
+        corpus,
+    )
+
+    run_nosey_parker = should_run_responses_nosey_parker(corpus)
+    if run_nosey_parker:
+        nosey_task = asyncio.to_thread(
+            nosey_parker_spans,
+            corpus,
+        )
+        secret_spans, regex_spans = await asyncio.gather(
+            nosey_task,
+            regex_task,
+        )
+    else:
+        secret_spans = []
+        regex_spans = await regex_task
+
+    all_spans = resolve_overlaps(
+        secret_spans + regex_spans
+    )
+
+    replacements = apply_corpus_spans_to_slots(
+        corpus,
+        slots,
+        all_spans,
+        ranges,
+        session,
+    )
+
+    return replace_text_slots(
+        value,
+        replacements,
+        [0],
+    )
+
+
 def fail_invalid_request(path, message):
     raise HTTPException(status_code=400, detail=f"{path}: {message}")
 
@@ -767,13 +912,13 @@ def reject_unknown_keys(path, value, allowed_keys):
 async def sanitize_content_field(path, value, session, allow_empty=False):
     if isinstance(value, str):
         ensure_string(path, value, allow_empty=allow_empty)
-        return await protect_payload_input(value, session)
+        return await protect_responses_payload_input(value, session)
     if isinstance(value, list):
         ensure_list(path, value)
-        return await protect_payload_input(value, session)
+        return await protect_responses_payload_input(value, session)
     if isinstance(value, dict):
         ensure_dict(path, value)
-        return await protect_payload_input(value, session)
+        return await protect_responses_payload_input(value, session)
     fail_invalid_request(path, "unsupported content-bearing field type")
 
 
@@ -783,6 +928,26 @@ def sanitize_metadata(path, value):
     for key, item in metadata.items():
         ensure_string(f"{path}.{key}", key, allow_empty=False, max_length=MAX_METADATA_KEY_LENGTH)
         ensure_string(f"{path}.{key}", item, allow_empty=True, max_length=MAX_METADATA_VALUE_LENGTH)
+        sanitized[key] = item
+    return sanitized
+
+
+def sanitize_client_metadata(path, value):
+    metadata = ensure_dict(path, value, max_keys=MAX_METADATA_KEYS)
+    sanitized = {}
+    for key, item in metadata.items():
+        ensure_string(
+            f"{path}.{key}",
+            key,
+            allow_empty=False,
+            max_length=MAX_METADATA_KEY_LENGTH,
+        )
+        ensure_string(
+            f"{path}.{key}",
+            item,
+            allow_empty=True,
+            max_length=MAX_CLIENT_METADATA_VALUE_LENGTH,
+        )
         sanitized[key] = item
     return sanitized
 
@@ -843,7 +1008,6 @@ def sanitize_text_config(path, value):
 
 def sanitize_text_format(path, value):
     obj = ensure_dict(path, value)
-    reject_unknown_keys(path, obj, {"type"})
 
     if "type" not in obj:
         fail_invalid_request(path, "format object must include type")
@@ -860,9 +1024,79 @@ def sanitize_text_format(path, value):
             "unsupported text format type",
         )
 
+    if format_type == "json_schema":
+        reject_unknown_keys(path, obj, {"type", "name", "schema", "strict"})
+        sanitized = {
+            "type": format_type,
+        }
+        if "name" in obj:
+            sanitized["name"] = ensure_string(
+                f"{path}.name",
+                obj["name"],
+                allow_empty=False,
+            )
+        if "strict" in obj:
+            sanitized["strict"] = ensure_bool(
+                f"{path}.strict",
+                obj["strict"],
+            )
+        if "schema" in obj:
+            sanitized["schema"] = sanitize_text_format_schema(
+                f"{path}.schema",
+                obj["schema"],
+            )
+        return sanitized
+
+    reject_unknown_keys(path, obj, {"type"})
     return {
         "type": format_type,
     }
+
+
+def sanitize_text_format_schema(path, value, depth=0):
+    if depth > MAX_TEXT_FORMAT_SCHEMA_DEPTH:
+        fail_invalid_request(path, "text format schema nesting too deep")
+
+    if value is None or isinstance(value, (bool, int, float)):
+        return value
+
+    if isinstance(value, str):
+        return ensure_string(
+            path,
+            value,
+            allow_empty=True,
+            max_length=MAX_STRING_LENGTH,
+        )
+
+    if isinstance(value, list):
+        values = ensure_list(path, value)
+        return [
+            sanitize_text_format_schema(
+                f"{path}[{index}]",
+                item,
+                depth + 1,
+            )
+            for index, item in enumerate(values)
+        ]
+
+    if isinstance(value, dict):
+        obj = ensure_dict(path, value)
+        sanitized = {}
+        for child_key, child_value in obj.items():
+            key = ensure_string(
+                f"{path}.<key>",
+                child_key,
+                allow_empty=False,
+                max_length=MAX_METADATA_KEY_LENGTH,
+            )
+            sanitized[key] = sanitize_text_format_schema(
+                f"{path}.{key}",
+                child_value,
+                depth + 1,
+            )
+        return sanitized
+
+    fail_invalid_request(path, "unsupported text format schema value type")
 
 
 def sanitize_stream_options(path, value):
@@ -889,19 +1123,59 @@ def sanitize_tool_choice(path, value):
 async def sanitize_tools(path, value, session):
     tools = ensure_list(path, value, max_length=MAX_TOOL_COUNT)
     sanitized = []
+
+    def sanitize_tool_value(item_path, item, depth=0):
+        if depth > MAX_TOOL_SCHEMA_DEPTH:
+            fail_invalid_request(item_path, "tool schema nesting too deep")
+
+        if item is None or isinstance(item, (bool, int, float)):
+            return item
+
+        if isinstance(item, str):
+            return ensure_string(
+                item_path,
+                item,
+                allow_empty=True,
+                max_length=MAX_STRING_LENGTH,
+            )
+
+        if isinstance(item, list):
+            values = ensure_list(item_path, item)
+            return [
+                sanitize_tool_value(
+                    f"{item_path}[{index}]",
+                    child,
+                    depth + 1,
+                )
+                for index, child in enumerate(values)
+            ]
+
+        if isinstance(item, dict):
+            obj = ensure_dict(item_path, item)
+            sanitized_obj = {}
+            for child_key, child_value in obj.items():
+                key = ensure_string(
+                    f"{item_path}.<key>",
+                    child_key,
+                    allow_empty=False,
+                    max_length=MAX_METADATA_KEY_LENGTH,
+                )
+                sanitized_obj[key] = sanitize_tool_value(
+                    f"{item_path}.{key}",
+                    child_value,
+                    depth + 1,
+                )
+            return sanitized_obj
+
+        fail_invalid_request(item_path, "unsupported tool value type")
+
     for index, item in enumerate(tools):
         item_path = f"{path}[{index}]"
         tool = ensure_dict(item_path, item)
         if "type" not in tool:
             fail_invalid_request(item_path, "tool must include type")
-        tool_type = ensure_string(f"{item_path}.type", tool["type"], allow_empty=False)
-        if tool_type not in SUPPORTED_SIMPLE_TOOL_TYPES:
-            fail_invalid_request(
-                item_path,
-                "tool type is not yet supported by the safe allowlist",
-            )
-        reject_unknown_keys(item_path, tool, {"type"})
-        sanitized.append({"type": tool_type})
+        ensure_string(f"{item_path}.type", tool["type"], allow_empty=False)
+        sanitized.append(sanitize_tool_value(item_path, tool))
     return sanitized
 
 
@@ -921,6 +1195,11 @@ async def build_responses_request(payload, session):
 
     if "background" in body:
         sanitized["background"] = ensure_bool("body.background", body["background"])
+    if "client_metadata" in body:
+        sanitized["client_metadata"] = sanitize_client_metadata(
+            "body.client_metadata",
+            body["client_metadata"],
+        )
     if "conversation" in body:
         sanitized["conversation"] = sanitize_conversation("body.conversation", body["conversation"])
     if "include" in body:
@@ -1260,6 +1539,30 @@ async def proxy_models(request: Request):
 
 @app.post(local_route("/responses"))
 async def proxy_responses(request: Request):
+    trace_id = uuid.uuid4().hex[:16]
+    request_started = time.perf_counter()
+    raw_body_read_ms = None
+    json_parse_ms = None
+    queue_wait_ms = None
+    sanitize_ms = None
+    upstream_connect_ms = None
+
+    def emit_responses_timing(event, **extra):
+        payload = {
+            "event": event,
+            "route": "/responses",
+            "trace_id": trace_id,
+            "session_id": session_id if "session_id" in locals() else None,
+            "elapsed_ms": round((time.perf_counter() - request_started) * 1000, 2),
+            "raw_body_read_ms": raw_body_read_ms,
+            "json_parse_ms": json_parse_ms,
+            "queue_wait_ms": queue_wait_ms,
+            "sanitize_ms": sanitize_ms,
+            "upstream_connect_ms": upstream_connect_ms,
+        }
+        payload.update(extra)
+        print(json.dumps(payload, ensure_ascii=False), flush=True)
+
     if "authorization" not in request.headers:
         raise HTTPException(
             status_code=401,
@@ -1284,7 +1587,9 @@ async def proxy_responses(request: Request):
             )
 
     try:
+        body_read_started = time.perf_counter()
         raw_body = await request.body()
+        raw_body_read_ms = round((time.perf_counter() - body_read_started) * 1000, 2)
     except Exception:
         raise HTTPException(
             status_code=400,
@@ -1298,7 +1603,9 @@ async def proxy_responses(request: Request):
         )
 
     try:
+        json_parse_started = time.perf_counter()
         payload = json.loads(raw_body)
+        json_parse_ms = round((time.perf_counter() - json_parse_started) * 1000, 2)
     except Exception:
         raise HTTPException(
             status_code=400,
@@ -1315,20 +1622,30 @@ async def proxy_responses(request: Request):
 
     enforce_request_limits(payload)
 
+    queue_wait_started = time.perf_counter()
     await acquire_capacity(
         RESPONSE_SEMAPHORE,
         RESPONSE_QUEUE_WAIT_SECONDS,
         "Privacy proxy is busy",
     )
+    queue_wait_ms = round((time.perf_counter() - queue_wait_started) * 1000, 2)
     capacity_acquired = True
     session_id, session = create_session()
 
     try:
+        sanitize_started = time.perf_counter()
         outbound_payload = await build_responses_request(
             payload,
             session,
         )
+        sanitize_ms = round((time.perf_counter() - sanitize_started) * 1000, 2)
     except Exception as exc:
+        emit_responses_timing(
+            "responses_request_failed",
+            stage="sanitize",
+            error_type=type(exc).__name__,
+            error_detail=exc.detail if isinstance(exc, HTTPException) else None,
+        )
         delete_session(session_id)
         if capacity_acquired:
             RESPONSE_SEMAPHORE.release()
@@ -1343,6 +1660,14 @@ async def proxy_responses(request: Request):
                 f"{type(exc).__name__}"
             ),
         )
+
+    emit_responses_timing(
+        "responses_request_ready",
+        request_bytes=len(raw_body),
+        stream=bool(outbound_payload.get("stream")),
+        tool_count=len(outbound_payload.get("tools", [])),
+        include_count=len(outbound_payload.get("include", [])),
+    )
 
     headers = build_upstream_request_headers(request)
     params = build_upstream_query_params(request)
@@ -1367,11 +1692,18 @@ async def proxy_responses(request: Request):
             json=outbound_payload,
         )
 
+        upstream_connect_started = time.perf_counter()
         upstream = await client.send(
             upstream_request,
             stream=True,
         )
+        upstream_connect_ms = round((time.perf_counter() - upstream_connect_started) * 1000, 2)
     except Exception as exc:
+        emit_responses_timing(
+            "responses_request_failed",
+            stage="upstream_connect",
+            error_type=type(exc).__name__,
+        )
         delete_session(session_id)
         await client.aclose()
         if capacity_acquired:
@@ -1388,10 +1720,16 @@ async def proxy_responses(request: Request):
     if upstream.status_code >= 400:
         body = await upstream.aread()
         status = upstream.status_code
+        emit_responses_timing(
+            "responses_upstream_error",
+            upstream_status=status,
+            response_bytes=len(body),
+        )
 
         response_headers = forward_response_headers(
             upstream.headers
         )
+        response_headers["x-privacy-proxy-trace-id"] = trace_id
 
         await upstream.aclose()
         await client.aclose()
@@ -1410,17 +1748,52 @@ async def proxy_responses(request: Request):
     )
 
     async def restored_stream():
+        first_chunk_sent = False
+        first_chunk_elapsed_ms = None
+        output_bytes = 0
         try:
             async for chunk in upstream.aiter_bytes():
                 restored = feed_restore(chunk)
 
                 if restored:
+                    output_bytes += len(restored)
+                    if not first_chunk_sent:
+                        first_chunk_sent = True
+                        first_chunk_elapsed_ms = round(
+                            (time.perf_counter() - request_started) * 1000,
+                            2,
+                        )
+                        emit_responses_timing(
+                            "responses_first_chunk",
+                            upstream_status=upstream.status_code,
+                            first_chunk_elapsed_ms=first_chunk_elapsed_ms,
+                            output_bytes=output_bytes,
+                        )
                     yield restored
 
             tail = finish_restore()
 
             if tail:
+                output_bytes += len(tail)
+                if not first_chunk_sent:
+                    first_chunk_sent = True
+                    first_chunk_elapsed_ms = round(
+                        (time.perf_counter() - request_started) * 1000,
+                        2,
+                    )
+                    emit_responses_timing(
+                        "responses_first_chunk",
+                        upstream_status=upstream.status_code,
+                        first_chunk_elapsed_ms=first_chunk_elapsed_ms,
+                        output_bytes=output_bytes,
+                    )
                 yield tail
+            emit_responses_timing(
+                "responses_stream_complete",
+                upstream_status=upstream.status_code,
+                first_chunk_elapsed_ms=first_chunk_elapsed_ms,
+                output_bytes=output_bytes,
+            )
         finally:
             await upstream.aclose()
             await client.aclose()
@@ -1431,7 +1804,10 @@ async def proxy_responses(request: Request):
     return StreamingResponse(
         restored_stream(),
         status_code=upstream.status_code,
-        headers=forward_response_headers(
-            upstream.headers
-        ),
+        headers={
+            **forward_response_headers(
+                upstream.headers
+            ),
+            "x-privacy-proxy-trace-id": trace_id,
+        },
     )

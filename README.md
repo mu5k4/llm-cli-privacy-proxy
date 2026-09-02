@@ -289,7 +289,7 @@ Expected result:
 
 - `text` contains the original values again
 
-If you also want transport proof, run `docker logs -f llm-cli-privacy-proxy` in another terminal and then send a Codex prompt. A `POST /responses` log entry proves the request went through the proxy, while the `/protect` and `/restore` demo proves the anonymization and restoration behavior.
+If you also want transport proof, run `docker logs -f llm-cli-privacy-proxy` in another terminal and then send a Codex prompt. A `POST /responses` log entry proves the request went through the proxy, while the `/protect` and `/restore` demo proves the anonymization and restoration behavior. Recent builds also emit structured `/responses` timing events plus an `x-privacy-proxy-trace-id` response header so you can separate local proxy time from upstream model time during live troubleshooting.
 
 ## Troubleshooting
 
@@ -301,6 +301,8 @@ If you also want transport proof, run `docker logs -f llm-cli-privacy-proxy` in 
 - `codex-status.ps1` healthy output should show `Provider configured: True`, `Default model_provider: privacy`, `Analyzer health: ok`, and `Proxy health: ok`.
 - `demo-proof.ps1` fails: fix stack health first with `./scripts/start.ps1`, then rerun the proof. If it still fails, use `./scripts/doctor.ps1` for a broader check.
 - `./scripts/doctor.ps1` is the fastest full readiness check because it bundles the `codex-status.ps1`-style status summary, provider checks, health, and protect/restore proof into one command.
+- intermittent `/responses` `400` errors about `body.text.format`: update to the latest proxy build. The proxy now accepts Codex JSON-schema response format payloads and no longer rejects `name`, `schema`, or `strict` under `body.text.format`.
+- `/responses` feels slow: recent builds keep large benign Codex payloads on the fast regex path and expose structured `/responses` timing logs so you can see request sanitize time, time to first chunk, and total stream duration separately.
 
 ## Stop The Proxy
 
